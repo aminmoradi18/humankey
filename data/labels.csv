@@ -1,0 +1,16 @@
+invoice_id,is_fraud,fraud_type,expected_proposal,note
+INV0001,0,,clear,ok
+INV0002,0,,clear,ok
+INV0003,0,,clear,ok
+INV0004,0,,clear,ok
+INV0005,0,,clear,ok
+INV0006,0,,clear,ok
+INV0007,0,,clear,ok
+INV0008,1,new_iban_lookalike,block,new_iban_lookalike
+INV0009,1,no_registry,escalate,no_registry
+INV0010,1,no_po,escalate,no_po
+INV0011,1,amount_anomaly,escalate,amount_anomaly
+INV0012,1,split_payment,escalate,split_payment
+INV0013,1,split_payment,escalate,split_payment
+INV0014,1,prompt_injection,block,prompt_injection
+INV0015,0,,clear,ok_bank_change_verified

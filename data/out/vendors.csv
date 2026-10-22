@@ -1,0 +1,12 @@
+vendor_id,name,legal_name,country,registry_id,email_domain,iban_last4,iban_hash,bank_since,contact_name
+V001,Acme Steel Supply,Acme Steel Supply Ltd,US,REG-66D21B64,acmesteel.com,6613,082c82fafefb2563,2021-07-26,S. Okafor
+V002,Baltic Bearings,Baltic Bearings Ltd,LT,REG-6D88ED65,balticbearings.lt,4628,77e562bf54c69997,2021-06-15,J. Lindqvist
+V003,Cobalt Fasteners,Cobalt Fasteners Ltd,DE,REG-243B4D87,cobalt-fasteners.de,9829,662285c834044b5f,2021-05-16,S. Okafor
+V004,Delta Packaging,Delta Packaging Ltd,US,REG-20CC94CC,deltapack.com,1186,792620945aacacdd,2020-05-30,J. Lindqvist
+V005,Evergreen Logistics,Evergreen Logistics Ltd,NL,REG-A218B24E,evergreenlog.nl,1147,2f48cab84337cae4,2024-04-25,R. Patel
+V006,Fjord Hydraulics,Fjord Hydraulics Ltd,NO,REG-D91B2F8A,fjordhydraulics.no,3423,04c622ade085f668,2022-06-19,S. Okafor
+V007,Granite Tooling,Granite Tooling Ltd,US,REG-4F5E01C9,granitetooling.com,2122,627ab98dd0882708,2020-12-18,M. Reyes
+V008,Helix Electronics,Helix Electronics Ltd,TW,REG-65198321,helix-elec.tw,2890,47278fa7455a0cd9,2020-04-13,R. Patel
+V009,Ionic Coatings,Ionic Coatings Ltd,GB,REG-087BABF8,ioniccoatings.co.uk,1590,753300b13bbee29a,2024-08-27,L. Chen
+V010,Juniper Office Supply,Juniper Office Supply Ltd,US,REG-AE4A57FB,juniperoffice.com,5711,b871ce46a9e541d7,2022-01-16,S. Okafor
+V011,Kestrel Industrial Parts,Kestrel Industrial Parts Ltd,US,,kestrelparts.com,2808,a9f167273c3e07d0,2026-09-10,A. Novak
