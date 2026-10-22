@@ -1,0 +1,8 @@
+.env
+__pycache__/
+*.pyc
+.venv/
+device_emu/key
+gate/state/*.jsonl
+gate/state/*.json
+logs/*.jsonl
