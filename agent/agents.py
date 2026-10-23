@@ -160,14 +160,21 @@ class Critic:
         if missing:
             reasons.append(f"required checks not run: {', '.join(missing)}")
         by_id = {r["receipt_id"]: r for r in receipts}
+        kept, dropped = [], []
         for c in draft["claims"]:
             ids = c.get("receipt_ids") or []
-            if not ids:
-                reasons.append(f"claim has no receipt: {c.get('text', '')[:60]!r}")
-            elif any(i not in by_id for i in ids):
-                reasons.append(f"claim cites unknown receipt: {c.get('text', '')[:60]!r}")
+            if not ids or any(i not in by_id for i in ids):
+                # An unverifiable claim is never evidence. If it asks for caution we still listen
+                # (the model may add caution, never remove it); otherwise it is just dropped.
+                if c.get("supports") == "risk_up":
+                    reasons.append(f"risk claim without a valid receipt: {c.get('text', '')[:60]!r}")
+                else:
+                    dropped.append(c)
+                    continue
             elif c.get("supports") == "risk_down" and any(by_id[i]["status"] in ("error", "not_run") for i in ids):
                 reasons.append(f"claim lowers risk on a failed query: {c.get('text', '')[:60]!r}")
+            kept.append(c)
+        draft["claims"], draft["dropped_claims"] = kept, dropped
         ups = [f for f in findings.values() if f["signal"] == "risk_up"]
         if draft["proposal"] == "clear" and ups:
             reasons.append("proposal is clear but these checks raise risk: " + ", ".join(f["check"] for f in ups))

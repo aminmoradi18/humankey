@@ -40,8 +40,19 @@ class CriticTest(unittest.TestCase):
         draft = {"proposal": "clear", "claims": [{"text": "trust me", "supports": "risk_down", "receipt_ids": []}]}
         verdict, reasons, _ = Critic(FakeZetaris()).review(draft, CLEAN, RECEIPTS, [{"by": "rules"}])
         self.assertEqual(verdict, "revise")
-        self.assertTrue(any("no receipt" in r for r in reasons))
+        self.assertEqual((draft["claims"], len(draft["dropped_claims"])), ([], 1))
         self.assertTrue(any("instruct the AI" in r for r in reasons))
+
+    def test_unverifiable_claim_is_dropped_unless_it_raises_risk(self):
+        down = {"text": "fine", "supports": "risk_down", "receipt_ids": ["rcpt_..."]}
+        up = {"text": "odd", "supports": "risk_up", "receipt_ids": ["rcpt_..."]}
+        draft = {"proposal": "clear", "claims": [down]}
+        verdict, reasons, _ = Critic(FakeZetaris()).review(draft, CLEAN, RECEIPTS, [])
+        self.assertEqual((verdict, draft["claims"], draft["dropped_claims"]), ("accept", [], [down]))
+        draft = {"proposal": "clear", "claims": [up]}
+        verdict, reasons, _ = Critic(FakeZetaris()).review(draft, CLEAN, RECEIPTS, [])
+        self.assertEqual(verdict, "revise")
+        self.assertIn("without a valid receipt", reasons[0])
 
     def test_result_drift_degrades_integrity(self):
         draft = {"proposal": "escalate", "claims": []}

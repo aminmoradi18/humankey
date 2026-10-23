@@ -97,8 +97,13 @@ def summarize(rows):
     return {cfg: m(cfg) for cfg in "ABC"}
 
 
-def run_seed(seed, i, env_base):
+def run_seed(seed, i, env_base, reuse=False):
     out = WORK / f"seed{seed}"
+    done = out / "gate" / "proposals.json"
+    if reuse and done.exists():
+        props = json.loads(done.read_text())
+        witness = next(iter(props.values()), {}).get("witness", {})
+        return score(seed, out, props, witness), None
     shutil.rmtree(out, ignore_errors=True)
     out.mkdir(parents=True)
     subprocess.run([sys.executable, "data/gen.py", "--seed", str(seed), "--out", str(out)], cwd=ROOT, check=True,
@@ -106,6 +111,8 @@ def run_seed(seed, i, env_base):
     subprocess.run(["./scripts/erp_db.sh"], cwd=ROOT, check=True, env={**env_base, "DATA_OUT": str(out)},
                    stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
     port = str(8730 + i)
+    # a world server left over from an interrupted run would still point at the deleted folder
+    subprocess.run(["fuser", "-k", f"{port}/tcp"], stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
     env = {**env_base, "HUMANKEY_STATE": str(out / "gate"), "HUMANKEY_LOGS": str(out / "logs"),
            "HUMANKEY_SNAPSHOTS": str(out / "snapshots"), "HUMANKEY_LLM_CACHE": str(out / "llm_cache"),
            "WORLD_PORT": port, "WORLD_DIR": str(out / "world"), "HMEM_DIR": str(out / "hmem"),
@@ -127,14 +134,17 @@ def main():
     ap = argparse.ArgumentParser()
     ap.add_argument("--seeds", default="101-110")
     ap.add_argument("--keep", action="store_true", help="keep per-seed folders in logs/bench")
+    ap.add_argument("--reuse", action="store_true", help="score seeds already run with --keep instead of rerunning")
     args = ap.parse_args()
     seeds = parse_seeds(args.seeds)
     env_base = dict(os.environ)
     all_rows, times = [], {}
     try:
         for i, seed in enumerate(seeds):
-            rows, secs = run_seed(seed, i, env_base)
+            rows, secs = run_seed(seed, i, env_base, args.reuse)
             all_rows += rows
+            if secs is None:
+                secs = json.loads((ROOT / "eval" / "benchmark.json").read_text())["seconds"].get(str(seed), 0)
             times[seed] = secs
             s = summarize(rows)
             print(f"seed {seed}: {secs}s  frauds paid w/o human A={s['A']['frauds paid with no human']} "
