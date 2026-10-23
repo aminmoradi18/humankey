@@ -74,6 +74,8 @@ class SerialDevice:
         self.ser = serial.Serial(self.port, baud, timeout=1)
         self.timeout = timeout
         self.device_id = None
+        time.sleep(2.5)  # opening the port resets the board; let it boot
+        self.ser.reset_input_buffer()
 
     def _send(self, obj):
         self.ser.write((json.dumps(obj, separators=(",", ":")) + "\n").encode())

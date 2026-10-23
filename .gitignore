@@ -7,8 +7,6 @@ gate/state/*.jsonl
 gate/state/*.json
 logs/*.jsonl
 logs/*.jsonl
-data/snapshots/
-data/llm_cache/
 node_modules/
 data/.world/
 device_emu/counter
@@ -17,3 +15,5 @@ data/hmem/
 gate/state/*.secret
 gate/state/counters.json
 gate/state/devices.json
+logs/sample/
+.pio/

@@ -19,7 +19,9 @@ def finding(check, signal, rid):
 RECEIPTS = [{"receipt_id": f"r{i}", "sql": "SELECT 1", "status": "ok", "result_sha256": "h"} for i in range(4)]
 CLEAN = {"invoice_header": dict(finding("invoice_header", "neutral", "r0"), facts={"amount": 1200.0}),
          "vendor_registry": finding("vendor_registry", "risk_down", "r1"),
-         "bank_account": finding("bank_account", "risk_down", "r2")}
+         "bank_account": finding("bank_account", "risk_down", "r2"),
+         "sender_domain": finding("sender_domain", "risk_down", "r3"),
+         "purchase_order": finding("purchase_order", "risk_down", "r3")}
 
 
 class CriticTest(unittest.TestCase):
@@ -46,6 +48,20 @@ class CriticTest(unittest.TestCase):
         _, reasons, integ = Critic(FakeZetaris(same=False)).review(draft, CLEAN, RECEIPTS, [])
         self.assertEqual(integ["verdict"], "degraded")
         self.assertTrue(any("changed on re-run" in r for r in reasons))
+
+
+class CoverageTest(unittest.TestCase):
+    def test_large_amount_requires_history_and_split_checks(self):
+        f = dict(CLEAN, invoice_header=dict(CLEAN["invoice_header"], facts={"amount": 9700.0}))
+        verdict, reasons, _ = Critic(FakeZetaris()).review({"proposal": "clear", "claims": []}, f, RECEIPTS, [])
+        self.assertEqual(verdict, "revise")
+        self.assertIn("split_pattern", reasons[0])
+
+    def test_block_without_evidence_is_sent_back_and_becomes_escalate(self):
+        verdict, reasons, _ = Critic(FakeZetaris()).review({"proposal": "block", "claims": []}, CLEAN, RECEIPTS, [])
+        self.assertTrue(any("no check raised risk" in r for r in reasons))
+        d = Risk.decide({"proposal": "block"}, CLEAN, [], {"verdict": "pass"}, [])
+        self.assertEqual((d["proposal"], d["route"]), ("escalate", "AWAITING_KEY"))
 
 
 class RiskTest(unittest.TestCase):

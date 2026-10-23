@@ -7,7 +7,7 @@ import os
 import sys
 from concurrent.futures import ThreadPoolExecutor
 
-from agent.agents import REQUIRED, Critic, Guard, Investigator, Planner, Reporter, Risk, apply_memory, event
+from agent.agents import Critic, Guard, Investigator, Planner, Reporter, Risk, apply_memory, event, required_checks
 from agent.tools import DB, Tools
 from common.env import ROOT
 from agent.world import World
@@ -49,7 +49,7 @@ def investigate(invoice_id, z, llm, world=None, run_id="run", max_revisions=1):
     revisions = 0
     while verdict == "revise" and revisions < max_revisions:
         revisions += 1
-        extra = [c for c in REQUIRED if c not in findings]
+        extra = [c for c in required_checks(findings) if c not in findings]
         inv.run_checks(invoice_id, extra, findings)
         draft = inv.write(invoice_id, findings, memo, feedback="; ".join(reasons))
         event("revise", invoice_id, agent="investigator", added_checks=extra, proposal=draft["proposal"])
@@ -63,7 +63,8 @@ def investigate(invoice_id, z, llm, world=None, run_id="run", max_revisions=1):
     if remembered:
         event("memory", invoice_id, agent="risk", recalled=remembered)
     decision = Risk.decide(draft, findings, flags, integrity, reasons)
-    key_text = Reporter.key_text(invoice_id, decision, findings, flags)
+    key_text = Reporter.key_text(invoice_id, decision, findings, flags,
+                                model_down=draft.get("explanation", "").startswith("investigator unavailable"))
     proposal = {
         "invoice_id": invoice_id, **decision,
         "vendor_id": header["facts"].get("vendor_id"), "amount": header["facts"].get("amount"),

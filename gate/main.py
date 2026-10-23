@@ -7,6 +7,7 @@ means one line in gate/state/ledger.jsonl.
 
 Usage:
   python3 -m gate.main enroll-emulator          register the emulator's public key
+  python3 -m gate.main enroll-serial            register the hardware key's public key (USB)
   python3 -m gate.main run [--allow-emulator]   process gate/state/proposals.json
   python3 -m gate.main forge INV0008            try to approve without the device (must be refused)
 """
@@ -132,6 +133,18 @@ def main(argv):
         STATE.mkdir(parents=True, exist_ok=True)
         (STATE / "devices.json").write_text(canonical(devices))
         print("emulator enrolled")
+    elif cmd == "enroll-serial":
+        # Ask the board for its public key once, over USB, and trust it from now on.
+        from gate.devices import SerialDevice
+        dev = SerialDevice()
+        pong = dev.ping()
+        if not pong or not pong.get("pub"):
+            sys.exit("no answer from the key on " + dev.port)
+        devices = load_json(STATE / "devices.json", {})
+        devices[pong["id"]] = pong["pub"]
+        STATE.mkdir(parents=True, exist_ok=True)
+        (STATE / "devices.json").write_text(canonical(devices))
+        print(f"enrolled {pong['id']} (counter {pong['counter']})")
     elif cmd == "run":
         gate = Gate(open_device(), allow_emulator="--allow-emulator" in argv)
         proposals = load_json(STATE / "proposals.json", {})

@@ -16,6 +16,17 @@ from common.jsonl import append
 from llm.provider import LLMError
 
 REQUIRED = ["invoice_header", "vendor_registry", "bank_account"]
+# Minimum coverage the critic enforces, whatever the planner chose (policy, not model).
+REQUIRED_ALWAYS = REQUIRED + ["sender_domain", "purchase_order"]
+REQUIRED_FROM_AMOUNT = (5000.0, ["amount_history", "split_pattern"])
+
+
+def required_checks(findings):
+    amount = findings.get("invoice_header", {}).get("facts", {}).get("amount") or 0
+    need = list(REQUIRED_ALWAYS)
+    if amount >= REQUIRED_FROM_AMOUNT[0]:
+        need += REQUIRED_FROM_AMOUNT[1]
+    return need
 # Findings a remembered human answer may settle. Account, sender domain, registry
 # misses and prompt injection never can: those always go back to a person.
 SOFT_CHECKS = {"purchase_order", "amount_history", "split_pattern"}
@@ -145,7 +156,7 @@ class Critic:
     def review(self, draft, findings, receipts, injection_flags):
         """Return (verdict, reasons, integrity). verdict: accept | revise."""
         reasons = []
-        missing = [c for c in REQUIRED if c not in findings]
+        missing = [c for c in required_checks(findings) if c not in findings]
         if missing:
             reasons.append(f"required checks not run: {', '.join(missing)}")
         by_id = {r["receipt_id"]: r for r in receipts}
@@ -162,6 +173,8 @@ class Critic:
             reasons.append("proposal is clear but these checks raise risk: " + ", ".join(f["check"] for f in ups))
         if draft["proposal"] == "clear" and injection_flags:
             reasons.append("proposal is clear but the memo tries to instruct the AI")
+        if draft["proposal"] == "block" and not ups and not injection_flags:
+            reasons.append("proposal is block but no check raised risk: name the evidence or escalate")
         # integrity: re-run every query and compare result hashes
         rerun = []
         for r in receipts:
@@ -191,11 +204,14 @@ class Risk:
             proposal, risk = "escalate", "medium"
         else:
             proposal, risk = "clear", "low"
-        # The model may ask for more caution, never for less.
+        # The model may ask for more caution, never for less. It can always send a case to the
+        # human; it cannot block without evidence (that would just be a false alarm).
         order = {"clear": 0, "escalate": 1, "block": 2}
-        if order.get(draft["proposal"], 1) > order[proposal]:
-            proposal = draft["proposal"]
-            risk = "high" if proposal == "block" else "medium"
+        wanted = draft["proposal"]
+        if wanted == "block" and proposal != "block":
+            wanted = "escalate"
+        if order.get(wanted, 1) > order[proposal]:
+            proposal, risk = wanted, "medium"
         if proposal == "block":
             route = "BLOCKED"
         elif proposal == "escalate" or amount >= APPROVAL_THRESHOLD:
@@ -223,15 +239,17 @@ class Reporter:
     name = "reporter"
 
     @staticmethod
-    def key_text(invoice_id, decision, findings, injection_flags=()):
+    def key_text(invoice_id, decision, findings, injection_flags=(), model_down=False):
         amount = findings.get("invoice_header", {}).get("facts", {}).get("amount") or 0
         ups = [f for f in findings.values() if f["signal"] in ("risk_up", "unknown") and not f.get("settled_by_memory")]
         if injection_flags:
             ups.insert(0, {"check": "injection"})
+        if model_down:
+            ups.append({"check": "model_down"})
         short = {"bank_account": "NEW bank account", "sender_domain": "lookalike domain",
                  "vendor_registry": "not in registry", "purchase_order": "no matching PO",
                  "amount_history": "amount unusual", "split_pattern": "split invoices",
-                 "injection": "memo instructs AI"}
+                 "injection": "memo instructs AI", "model_down": "AI offline: ask"}
         l1 = f"{invoice_id} ${amount:,.0f}"[:21]
         reasons = [short.get(f["check"], f["check"])[:21] for f in ups][:2] or ["checks passed"]
         l2 = reasons[0]

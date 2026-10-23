@@ -1,0 +1,1 @@
+{"model":"nemotron-mini","text":" [\n  {\n    \"text\": \"The invoice INV0006 is for goods delivered under PO and is net 30. The vendor is pre-approved by the CFO.\",\n    \"supports\": [\"risk_up\", \"risk_down\"],\n    \"receipt_ids\": [\"rcpt_...\", \"rcpt_...\", \"rcpt_...\"]\n  }\n]"}
