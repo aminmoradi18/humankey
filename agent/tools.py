@@ -69,7 +69,7 @@ class Tools:
             return _unknown("invoice_header", [rc])
         amt = _num(inv["amount"])
         facts = {"vendor_id": inv["vendor_id"], "amount": amt, "po_id": inv.get("po_id") or None,
-                 "iban_last4": inv["iban_last4"], "from_domain": inv.get("from_domain"),
+                 "iban_last4": inv["iban_last4"], "iban_hash": inv["iban_hash"], "from_domain": inv.get("from_domain"),
                  "subject": inv.get("subject"), "over_threshold": amt is not None and amt >= APPROVAL_THRESHOLD}
         return _f("invoice_header", "neutral",
                   f"{invoice_id}: {amt:,.2f} USD to account ...{inv['iban_last4']}", facts, [rc])

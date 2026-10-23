@@ -1,1 +1,1 @@
-{"data":[["15"]],"headers":["n"],"sql":"SELECT count(*) AS n FROM northwind_erp.invoices"}
+{"data":[["17"]],"headers":["n"],"sql":"SELECT count(*) AS n FROM northwind_erp.invoices"}

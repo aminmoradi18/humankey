@@ -1,0 +1,1 @@
+{"data":[["INV0004"]],"headers":["invoice_id"],"sql":"SELECT i.invoice_id FROM northwind_erp.invoices i LEFT JOIN northwind_erp.vendors v ON v.vendor_id = i.vendor_id WHERE v.vendor_id IS NULL ORDER BY i.invoice_id"}

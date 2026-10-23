@@ -8,6 +8,7 @@ means one line in gate/state/ledger.jsonl.
 Usage:
   python3 -m gate.main enroll-emulator          register the emulator's public key
   python3 -m gate.main enroll-serial            register the hardware key's public key (USB)
+  python3 -m gate.main import-accounts          load paid-to accounts into the key's own ledger
   python3 -m gate.main run [--allow-emulator]   process gate/state/proposals.json
   python3 -m gate.main forge INV0008            try to approve without the device (must be refused)
 """
@@ -61,7 +62,7 @@ class Gate:
         return c
 
     # -- verification --------------------------------------------------
-    def verify(self, contract, text, msg):
+    def verify(self, contract, text, msg, sent=None):
         """Return None if the approval is valid, else the refusal reason."""
         if msg.get("d") != "approve":
             return f"device answered {msg.get('d')}"
@@ -77,9 +78,12 @@ class Gate:
         if msg.get("th") != sha256(text):
             return "device showed different text"
         c_sha = sha256(canonical(contract))
-        if not verify_ed25519(self.devices[dev], decision_message(msg["req"], c_sha, msg["th"], "approve",
-                                                                   msg["counter"]), msg.get("sig", "")):
+        if not verify_ed25519(self.devices[dev], decision_message(
+                msg["req"], c_sha, msg["th"], "approve", msg["counter"], msg.get("exp", -1), msg.get("cov", -1),
+                msg.get("acct", "none"), msg.get("ah", "")), msg.get("sig", "")):
             return "device signature invalid"
+        if sent is not None and (msg.get("exp", -1), msg.get("cov", -1)) != sent:
+            return "device saw a different count than the gate sent"
         if msg["req"] != contract["contractId"]:
             return "decision is for another contract"
         if int(msg["counter"]) <= int(self.counters.get(dev, 0)):
@@ -111,12 +115,21 @@ class Gate:
         contract = self.issue_contract(p)
         c_sha = sha256(canonical(contract))
         event("sent_to_device", inv, agent="gate", contract=contract["contractId"], text=p["key_text"])
-        msg = self.device.show(contract["contractId"], p["key_text"], c_sha)
-        reason = self.verify(contract, p["key_text"], msg)
+        w = p.get("witness")
+        hdr = p["findings"].get("invoice_header", {}).get("facts", {})
+        acct = {"v": p["vendor_id"], "h": hdr.get("iban_hash", ""), "l4": hdr.get("iban_last4", "")} \
+            if hdr.get("iban_hash") else None
+        msg = self.device.show(contract["contractId"], p["key_text"], c_sha, w=w, acct=acct)
+        reason = self.verify(contract, p["key_text"], msg, sent=(w["exp"], w["cov"]) if w else (-1, -1))
+        if msg.get("warned"):
+            event("key_warning", inv, agent="key", count=f"{msg.get('cov')}/{msg.get('exp')}",
+                  account=msg.get("acct"), decision=msg.get("d"))
         self._save_counter(msg.get("id"), msg.get("counter"))
         if reason is None:
             approval = {"kind": "hardware-confirm", "device_id": msg["id"], "contract_sha256": c_sha,
                         "text_sha256": msg["th"], "decision": "approve", "counter": msg["counter"],
+                        "count_witness": {"expected": msg.get("exp"), "checked": msg.get("cov")},
+                        "account_on_key": msg.get("acct"),
                         "signature": msg["sig"], "contract": contract}
             self.execute(p, f"human key ({msg['id']})", approval)
             return "EXECUTED"
@@ -145,6 +158,17 @@ def main(argv):
         STATE.mkdir(parents=True, exist_ok=True)
         (STATE / "devices.json").write_text(canonical(devices))
         print(f"enrolled {pong['id']} (counter {pong['counter']})")
+    elif cmd == "import-accounts":
+        # One-time: give the key the account each vendor was actually PAID to (payment history),
+        # not the current vendor master; the person confirms the import on the key.
+        from zetaris.client import ZetarisClient
+        rows, _ = ZetarisClient().query(
+            "SELECT vendor_id, iban_hash, iban_last4, paid_at FROM northwind_erp.payments ORDER BY paid_at",
+            purpose="account import from payment history", agent="gate")
+        last = {}
+        for r in rows:
+            last[r["vendor_id"]] = {"v": r["vendor_id"], "h": r["iban_hash"], "l4": r["iban_last4"]}
+        print(open_device().import_accounts(list(last.values())))
     elif cmd == "run":
         gate = Gate(open_device(), allow_emulator="--allow-emulator" in argv)
         proposals = load_json(STATE / "proposals.json", {})

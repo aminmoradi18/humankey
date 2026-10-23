@@ -34,6 +34,7 @@ VENDORS = [
     ("Avery Dennison Corporation", "US", "averydennison.com", "549300PW7VPFCYKLIV37"),
     ("Kestrel Industrial Parts", "US", "kestrelparts.com", "5493000KESTREL0PARTS"),  # invented; LEI unknown to GLEIF
     ("3M Company", "US", "3m.com", "LUZQVYP4VS22CLWDAR65"),
+    ("Emerson Electric Co.", "US", "emerson.com", "FGLT0EWZSUIRRITFOA30"),
 ]
 
 INVENTED = {"Kestrel Industrial Parts"}
@@ -49,12 +50,19 @@ PLAN = [
     (3, "split_payment"), (3, "split_payment"),
     (1, "prompt_injection"),
     (11, "ok_bank_change_verified"),  # bank changed, but verified by phone: should clear
+    # The vendor master itself was edited to the attacker's account (no change request): every
+    # database check agrees with the master, so only the key's own account ledger notices.
+    (12, "master_tampered"),
+    # Invoice whose vendor id is missing from the vendor master: an inner join drops it silently,
+    # so the agents never see it; only the independent count (count witness) does.
+    (None, "orphan_vendor"),
 ]
 
 EXPECTED = {
     "ok": "clear", "ok_bank_change_verified": "clear",
     "new_iban_lookalike": "block", "no_registry": "escalate", "no_po": "escalate",
     "amount_anomaly": "escalate", "split_payment": "escalate", "prompt_injection": "block",
+    "master_tampered": "escalate", "orphan_vendor": "escalate",
 }
 
 
@@ -97,6 +105,8 @@ def main(seed):
         num = iban(rng)
         ibans[vid] = num
         typical[vid] = rng.choice([1800, 4200, 7500, 12000, 23000])
+        if name.startswith("Emerson"):
+            typical[vid] = 23000  # over the approval threshold: the payment goes to the key
         since = START - timedelta(days=rng.randint(400, 2000))
         if name in INVENTED:
             since = TODAY - timedelta(days=40)
@@ -122,14 +132,19 @@ def main(seed):
                         "created_at": ts(day), "status": "closed"})
             payments.append({"payment_id": f"P{len(payments) + 1:05d}", "vendor_id": vid,
                              "invoice_id": f"H{len(payments) + 1:05d}", "amount": amt,
-                             "paid_at": ts(day + timedelta(days=25)), "iban_hash": v["iban_hash"]})
+                             "paid_at": ts(day + timedelta(days=25)), "iban_hash": v["iban_hash"],
+                             "iban_last4": v["iban_last4"]})
 
     emails, changes, invoices, labels = [], [], [], []
     vmap = {v["vendor_id"]: v for v in vendors}
     plan = list(PLAN)
     rng.shuffle(plan)
     for n, (vi, kind) in enumerate(plan, 1):
-        v = vendors[vi]
+        if vi is None:  # orphan: a vendor id that is not in the vendor master
+            v = {"vendor_id": "V099", "email_domain": "northline-supply.com", "contact_name": "D. Moss"}
+            typical["V099"], ibans["V099"] = 7200, iban(rng)
+        else:
+            v = vendors[vi]
         vid = v["vendor_id"]
         inv = f"INV{n:04d}"
         when = TODAY - timedelta(days=rng.randint(0, 5), hours=rng.randint(0, 9))
@@ -154,6 +169,9 @@ def main(seed):
                             "new_iban_hash": h(pay_iban), "new_iban_last4": pay_iban[-4:],
                             "requested_at": ts(when - timedelta(days=9)), "channel": "email",
                             "verified_by": "phone callback, known number (AP clerk)"})
+            vmap[vid]["iban_hash"], vmap[vid]["iban_last4"] = h(pay_iban), pay_iban[-4:]
+        elif kind == "master_tampered":
+            pay_iban = iban(rng)  # attacker's account, written straight into the vendor master
             vmap[vid]["iban_hash"], vmap[vid]["iban_last4"] = h(pay_iban), pay_iban[-4:]
         elif kind == "no_po":
             has_po = False

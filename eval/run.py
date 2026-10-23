@@ -19,12 +19,19 @@ def main():
     labels = {r["invoice_id"]: r for r in csv.DictReader(open(LABELS))}
     props = json.loads(PROPOSALS.read_text())
     rows, c = [], Counter()
+    witness_miss = set(next(iter(props.values()), {}).get("witness", {}).get("miss", []))
     for inv, lab in sorted(labels.items()):
         p = props.get(inv)
         fraud = lab["is_fraud"] == "1"
         if not p:
-            rows.append((inv, lab["note"], lab["expected_proposal"], "-", "-", "NOT INVESTIGATED"))
+            seen = inv in witness_miss
+            rows.append((inv, lab["note"], lab["expected_proposal"], "-", "-",
+                         "never reached the agents; caught by the count witness on the key" if seen else "NOT INVESTIGATED"))
             c["missing"] += 1
+            if fraud:
+                c["fraud"] += 1
+                c["fraud_stopped"] += seen
+                c["fraud_witness"] += seen
             continue
         stopped = p["route"] in ("BLOCKED", "AWAITING_KEY")
         if fraud:
@@ -44,7 +51,8 @@ def main():
     revises = sum(1 for e in read("events") if e.get("kind") == "revise")
     out = ["# Evaluation", "",
            f"- Frauds stopped before payment: **{c['fraud_stopped']} / {c['fraud']}** "
-           f"({c['fraud_blocked']} blocked outright, the rest held for the human key)",
+           f"({c['fraud_blocked']} blocked outright, {c['fraud_witness']} caught only by the count witness, "
+           f"the rest held for the human key)",
            f"- Clean invoices wrongly blocked: **{c['false_block']} / {c['clean']}**; "
            f"paid automatically: {c['clean_auto']} (the others were over the approval threshold or escalated)",
            f"- Proposal equals the label: {c['exact']} / {len(labels) - c['missing']}",

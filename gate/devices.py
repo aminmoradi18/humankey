@@ -7,6 +7,7 @@
 """
 import json
 import os
+from pathlib import Path
 import sys
 import time
 
@@ -15,7 +16,8 @@ from cryptography.hazmat.primitives.serialization import Encoding, NoEncryption,
 from common.env import ROOT
 from gate.crypto import b64, decision_message, new_private_key, public_key_b64, sha256
 
-EMU_DIR = ROOT / "device_emu"
+def emu_dir():
+    return Path(os.environ.get("HUMANKEY_EMU_DIR", ROOT / "device_emu"))
 
 
 class EmulatorDevice:
@@ -23,8 +25,10 @@ class EmulatorDevice:
 
     def __init__(self, script=None, timeout=60):
         """script: list of 'approve'/'reject'/'timeout' answers for tests; None asks on the terminal."""
-        EMU_DIR.mkdir(exist_ok=True)
-        key_path, self.counter_path = EMU_DIR / "key", EMU_DIR / "counter"
+        EMU_DIR = emu_dir()
+        EMU_DIR.mkdir(parents=True, exist_ok=True)
+        self.dir = EMU_DIR
+        key_path, self.counter_path = self.dir / "key", self.dir / "counter"
         if not key_path.exists():
             key_path.write_bytes(new_private_key().private_bytes(Encoding.PEM, PrivateFormat.PKCS8, NoEncryption()))
             key_path.chmod(0o600)
@@ -57,13 +61,54 @@ class EmulatorDevice:
             return "timeout"
         return {"a": "approve", "r": "reject"}.get(ans[:1], "timeout")
 
-    def show(self, req, text, contract_sha):
-        d = self._ask(text)
+    # The emulator keeps the same private memory as the board: last independent count and the
+    # last account a human approved per vendor (device_emu/ledger.json).
+    def _ledger(self):
+        p = self.dir / "ledger.json"
+        return json.loads(p.read_text()) if p.exists() else {"last_expected": 0, "accounts": {}}
+
+    def _save_ledger(self, led):
+        (self.dir / "ledger.json").write_text(json.dumps(led, sort_keys=True))
+
+    def import_accounts(self, items):
+        led = self._ledger()
+        d = self._ask(f"ACCOUNT IMPORT\ntrust {len(items)} vendor\naccounts from\nthe gate?")
+        if d == "approve":
+            led["accounts"] = {it["v"]: {"h": it["h"], "l4": it["l4"]} for it in items}
+            self._save_ledger(led)
+        return {"t": "acct_import", "d": d, "n": len(led["accounts"])}
+
+    def show(self, req, text, contract_sha, w=None, acct=None):
+        led = self._ledger()
+        exp, cov = (w or {}).get("exp", -1), (w or {}).get("cov", -1)
+        warn, status = [], "none"
+        if exp >= 0 and cov >= 0 and cov < exp:
+            warn.append(f"{exp - cov} of {exp} NOT checked")
+        if exp >= 0 and led["last_expected"] and exp < led["last_expected"]:
+            warn.append(f"count fell {led['last_expected']}->{exp}")
+        if acct and acct.get("v"):
+            known = led["accounts"].get(acct["v"])
+            status = "first" if not known else ("known" if known["h"] == acct["h"] else "new")
+            if status == "new":
+                warn += [f"NEW ACCOUNT ..{acct['l4']}", f"last OK'd ..{known['l4']}"]
+        d = "approve"
+        if warn:
+            d = self._ask("!! KEY WARNING\n" + "\n".join(warn) + "\nBT1=I SEE  BT2=NO")
+        if d == "approve":
+            d = self._ask(text)
         counter = self._next_counter()
+        if d == "approve":
+            if exp >= 0:
+                led["last_expected"] = exp
+            if status in ("first", "new"):
+                led["accounts"][acct["v"]] = {"h": acct["h"], "l4": acct["l4"]}
+            self._save_ledger(led)
         th = sha256(text)
-        msg = {"t": "decision", "req": req, "d": d, "counter": counter, "th": th, "id": self.device_id}
+        ah = (acct or {}).get("h", "")
+        msg = {"t": "decision", "req": req, "d": d, "counter": counter, "th": th, "id": self.device_id,
+               "exp": exp, "cov": cov, "acct": status, "ah": ah, "warned": len(warn)}
         if d != "timeout":
-            msg["sig"] = b64(self._key.sign(decision_message(req, contract_sha, th, d, counter)))
+            msg["sig"] = b64(self._key.sign(decision_message(req, contract_sha, th, d, counter, exp, cov, status, ah)))
         return msg
 
 
@@ -99,9 +144,19 @@ class SerialDevice:
             self.device_id = msg.get("id")
         return msg
 
-    def show(self, req, text, contract_sha):
-        self._send({"t": "show", "req": req, "text": text, "c": contract_sha})
-        msg = self._read("decision", time.time() + self.timeout + 5)
+    def import_accounts(self, items):
+        self._send({"t": "acct_import", "items": items})
+        return self._read("acct_import", time.time() + self.timeout + 10)
+
+    def show(self, req, text, contract_sha, w=None, acct=None):
+        cmd = {"t": "show", "req": req, "text": text, "c": contract_sha}
+        if w:
+            cmd["w"] = {"exp": w["exp"], "cov": w["cov"]}
+        if acct:
+            cmd["acct"] = acct
+        self._send(cmd)
+        # a warning screen may come first: allow two answers' worth of time
+        msg = self._read("decision", time.time() + 2 * self.timeout + 10)
         return msg or {"t": "decision", "req": req, "d": "timeout", "counter": None, "th": None,
                        "id": self.device_id}
 

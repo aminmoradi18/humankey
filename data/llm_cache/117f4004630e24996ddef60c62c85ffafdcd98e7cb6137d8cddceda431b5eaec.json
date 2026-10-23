@@ -1,1 +1,0 @@
-{"model":"nemotron-mini","text":" {\"checks\": [\"vendor_registry\", \"bank_account\"], \"reason\": \"This payment seems unusual, as it involves a vendor with no LEI confirmation in the public registry and a payee account that does not match the vendor master account.\"}"}

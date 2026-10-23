@@ -19,8 +19,9 @@ def b64(b):
     return base64.b64encode(b).decode()
 
 
-def decision_message(req, contract_sha, text_sha, decision, counter):
-    return f"{req}|{contract_sha}|{text_sha}|{decision}|{counter}".encode()
+def decision_message(req, contract_sha, text_sha, decision, counter, exp=-1, cov=-1, acct="none", acct_hash=""):
+    """What the key signs: the decision plus what it saw (count witness, account ledger verdict)."""
+    return f"{req}|{contract_sha}|{text_sha}|{decision}|{counter}|{exp}|{cov}|{acct}:{acct_hash}".encode()
 
 
 def public_key_b64(private_key):

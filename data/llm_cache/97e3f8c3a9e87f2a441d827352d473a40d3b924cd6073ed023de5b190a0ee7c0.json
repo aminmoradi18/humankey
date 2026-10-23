@@ -1,0 +1,1 @@
+{"model":"nemotron-mini","text":" {\"checks\": [\"vendor_registry\", \"bank_account\"], \"reason\": \"This payment needs checks on vendor registry and bank account to ensure it's a legitimate payment.\"}"}

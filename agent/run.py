@@ -80,11 +80,23 @@ def investigate(invoice_id, z, llm, world=None, run_id="run", max_revisions=1):
 
 
 def coverage(z):
-    """Count witness: invoices in the raw table vs invoices we will investigate."""
-    rows, rc = z.query(f"SELECT invoice_id, vendor_id FROM {DB}.invoices ORDER BY invoice_id",
-                       purpose="coverage", agent="critic")
-    count, rc2 = z.query(f"SELECT count(*) AS n FROM {DB}.invoices", purpose="coverage count", agent="critic")
-    return {r["invoice_id"]: r["vendor_id"] for r in rows}, int(count[0]["n"]) if count else None, [rc, rc2]
+    """The work list and an independent count witness for it.
+
+    The work list joins invoices to the vendor master (that is how the agents get vendor data);
+    an inner join silently drops an invoice whose vendor is missing. The witness counts the raw
+    table on its own and lists what the join lost (anti-join), so a gap cannot hide.
+    """
+    rows, rc = z.query(f"SELECT i.invoice_id, i.vendor_id FROM {DB}.invoices i "
+                       f"JOIN {DB}.vendors v ON v.vendor_id = i.vendor_id ORDER BY i.invoice_id",
+                       purpose="work list", agent="planner")
+    count, rc2 = z.query(f"SELECT count(*) AS n FROM {DB}.invoices", purpose="count witness", agent="critic")
+    lost, rc3 = z.query(f"SELECT i.invoice_id FROM {DB}.invoices i LEFT JOIN {DB}.vendors v "
+                        f"ON v.vendor_id = i.vendor_id WHERE v.vendor_id IS NULL ORDER BY i.invoice_id",
+                        purpose="count witness: rows the join dropped", agent="critic")
+    listed = {r["invoice_id"]: r["vendor_id"] for r in rows}
+    witness = {"exp": int(count[0]["n"]) if count else None, "cov": len(listed),
+               "miss": [r["invoice_id"] for r in lost], "receipts": [rc["receipt_id"], rc2["receipt_id"], rc3["receipt_id"]]}
+    return listed, witness
 
 
 def run_group(ids, run_id):
@@ -97,7 +109,8 @@ def main(ids):
     z = ZetarisClient()
     World()  # start the service once before the workers
     run_id = "run_" + now_iso().replace(":", "").replace("-", "")
-    listed, expected, _ = coverage(z)
+    listed, witness = coverage(z)
+    event("coverage", "*", agent="critic", **witness)
     ids = ids or sorted(listed)
     groups = {}
     for i in ids:
@@ -107,6 +120,7 @@ def main(ids):
     with ThreadPoolExecutor(max_workers=int(os.environ.get("RUN_WORKERS", "3"))) as pool:
         for result in pool.map(lambda g: run_group(g, run_id), groups.values()):
             for p in result:
+                p["witness"] = {k: witness[k] for k in ("exp", "cov", "miss")}
                 out[p["invoice_id"]] = p
     for i in sorted(out):
         p = out[i]
@@ -117,7 +131,8 @@ def main(ids):
     old = json.loads(path.read_text()) if path.exists() else {}
     old.update(out)
     path.write_text(canonical(old))
-    print(f"coverage: investigated {len(out)} of {expected} invoices in Zetaris ({run_id})")
+    print(f"coverage: investigated {len(out)} of {witness['exp']} invoices in Zetaris ({run_id}); "
+          f"not reached: {witness['miss'] or 'none'}")
 
 
 if __name__ == "__main__":

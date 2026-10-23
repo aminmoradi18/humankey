@@ -46,7 +46,23 @@ struct Saved {
   uint32_t counter;
 };
 
+// Stored after Saved, so boards enrolled before this version keep their key and counter.
+#define EXT_MAGIC 0x484B5832UL  // "HKX2"
+#define MAX_ACCTS 32
+struct Account {
+  char vendor[8];
+  char hash[17];
+  char last4[5];
+};
+struct Ext {
+  uint32_t magic;
+  uint32_t lastExpected;  // count witness: invoices in the source at the last signed decision
+  uint8_t n;
+  Account acct[MAX_ACCTS];  // the device's own ledger: last account a human approved per vendor
+};
+
 Adafruit_SSD1306 oled(128, 64, &Wire, -1);
+Ext ext;
 bool oledOk = false;
 Saved saved;
 uint8_t pub[32];
@@ -102,7 +118,25 @@ String chipId() {
 
 void save() {
   EEPROM.put(0, saved);
+  EEPROM.put(sizeof(Saved), ext);
   EEPROM.commit();
+}
+
+int findAccount(const String &vendor) {
+  for (int i = 0; i < ext.n; i++)
+    if (vendor == ext.acct[i].vendor) return i;
+  return -1;
+}
+
+void storeAccount(const String &vendor, const String &hash, const String &last4) {
+  int i = findAccount(vendor);
+  if (i < 0) {
+    if (ext.n >= MAX_ACCTS) return;
+    i = ext.n++;
+  }
+  strlcpy(ext.acct[i].vendor, vendor.c_str(), sizeof ext.acct[i].vendor);
+  strlcpy(ext.acct[i].hash, hash.c_str(), sizeof ext.acct[i].hash);
+  strlcpy(ext.acct[i].last4, last4.c_str(), sizeof ext.acct[i].last4);
 }
 
 // Two-colour SSD1306: rows 0-15 are yellow (title), rows 16-63 blue (body + footer).
@@ -129,7 +163,23 @@ void screen(const String &title, const String &body, const String &footer) {
   oled.display();
 }
 
-void idle() { led(0, 0, 8); screen("HUMANKEY", "ready\nsigned so far: " + String(saved.counter), "waiting for the gate"); }
+void idle() {
+  led(0, 0, 8);
+  if (!oledOk) return;
+  oled.clearDisplay();
+  oled.setTextColor(SSD1306_WHITE);
+  oled.setTextSize(1);
+  oled.setCursor(0, 4);
+  oled.print("HUMANKEY");
+  oled.setTextSize(2);
+  oled.setCursor(34, 26);
+  oled.print("READY");
+  oled.setTextSize(1);
+  String foot = String(ext.n) + " accounts  #" + String(saved.counter);
+  oled.setCursor((128 - 6 * foot.length()) / 2, 56);
+  oled.print(foot);
+  oled.display();
+}
 
 // Result screen, held for 5 s: a filled disc with a check (approve) or an X (reject) cut out of it,
 // or a clock (timeout). The OLED is yellow/blue only, so the colour comes from the RGB LED,
@@ -202,14 +252,63 @@ String waitButton() {
   return "timeout";
 }
 
+// One decision. Before the normal YES/NO screen the key shows its own warnings, which the
+// person must acknowledge with BT1 first:
+//  - count witness: "w":{"exp","cov","miss":[...]} - fewer invoices checked than exist, or the
+//    independent count fell since the last signed decision;
+//  - account ledger: "acct":{"v","h","l4"} - the payee account differs from the last account a
+//    human approved for this vendor on THIS key (the database can be wrong; this memory is not
+//    writable by the laptop).
+// The signed message carries what the key saw: req|c|th|d|counter|exp|cov|acct:hash
 void show(JsonDocument &in) {
   String req = in["req"] | "";
   String text = in["text"] | "";
   String c = in["c"] | "";
-  led(24, 16, 0);
-  screen("HUMANKEY  #" + String(saved.counter + 1), text, "BT1=YES       BT2=NO");
-  String d = waitButton();
+  long exp = in["w"]["exp"] | -1L;
+  long cov = in["w"]["cov"] | -1L;
+  String av = in["acct"]["v"] | "";
+  String ah = in["acct"]["h"] | "";
+  String al4 = in["acct"]["l4"] | "";
+
+  String warn = "";
+  int nwarn = 0;
+  if (exp >= 0 && cov >= 0 && cov < exp) {
+    warn += String(exp - cov) + " of " + String(exp) + " NOT checked\n";
+    nwarn++;
+  }
+  if (exp >= 0 && ext.lastExpected > 0 && (uint32_t)exp < ext.lastExpected) {
+    warn += "count fell " + String(ext.lastExpected) + "->" + String(exp) + "\n";
+    nwarn++;
+  }
+  String acct = "none";
+  if (av.length()) {
+    int i = findAccount(av);
+    if (i < 0) acct = "first";
+    else if (ah == ext.acct[i].hash) acct = "known";
+    else {
+      acct = "new";
+      warn += "NEW ACCOUNT .." + al4 + "\nlast OK'd .." + String(ext.acct[i].last4) + "\n";
+      nwarn++;
+    }
+  }
+
+  String d = "approve";
+  if (nwarn) {
+    led(60, 0, 0);
+    screen("!! KEY WARNING", warn, "BT1=I SEE     BT2=NO");
+    d = waitButton();  // approve here only means "I have seen the warning"
+    delay(400);
+  }
+  if (d == "approve") {
+    led(24, 16, 0);
+    screen("HUMANKEY  #" + String(saved.counter + 1), text, "BT1=YES       BT2=NO");
+    d = waitButton();
+  }
   saved.counter += 1;  // every decision moves the counter, signed or not
+  if (d == "approve") {
+    if (exp >= 0) ext.lastExpected = exp;
+    if (av.length() && (acct == "first" || acct == "new")) storeAccount(av, ah, al4);
+  }
   save();
   String th = sha256Hex(text);
   JsonDocument out;
@@ -219,8 +318,14 @@ void show(JsonDocument &in) {
   out["counter"] = saved.counter;
   out["th"] = th;
   out["id"] = deviceId;
+  out["exp"] = exp;
+  out["cov"] = cov;
+  out["acct"] = acct;
+  out["ah"] = ah;
+  out["warned"] = nwarn;
   if (d != "timeout") {
-    String msg = req + "|" + c + "|" + th + "|" + d + "|" + String(saved.counter);
+    String msg = req + "|" + c + "|" + th + "|" + d + "|" + String(saved.counter) + "|" + String(exp) + "|" +
+                 String(cov) + "|" + acct + ":" + ah;
     uint8_t sig[64];
     Ed25519::sign(sig, saved.priv, pub, (const uint8_t *)msg.c_str(), msg.length());
     out["sig"] = b64(sig, 64);
@@ -229,6 +334,41 @@ void show(JsonDocument &in) {
   Serial.println();
   result(d);
   idle();
+}
+
+// One-time import of known-good accounts, approved on the key itself.
+void acctImport(JsonDocument &in) {
+  JsonArray items = in["items"].as<JsonArray>();
+  led(24, 16, 0);
+  screen("ACCOUNT IMPORT", "trust " + String(items.size()) + " vendor\naccounts from\nthe gate?", "BT1=YES       BT2=NO");
+  String d = waitButton();
+  if (d == "approve") {
+    ext.n = 0;
+    for (JsonObject it : items) storeAccount(it["v"] | "", it["h"] | "", it["l4"] | "");
+    save();
+  }
+  JsonDocument out;
+  out["t"] = "acct_import";
+  out["d"] = d;
+  out["n"] = ext.n;
+  serializeJson(out, Serial);
+  Serial.println();
+  result(d);
+  idle();
+}
+
+void acctList() {
+  JsonDocument out;
+  out["t"] = "acct_list";
+  out["last_expected"] = ext.lastExpected;
+  JsonArray a = out["items"].to<JsonArray>();
+  for (int i = 0; i < ext.n; i++) {
+    JsonObject o = a.add<JsonObject>();
+    o["v"] = ext.acct[i].vendor;
+    o["l4"] = ext.acct[i].last4;
+  }
+  serializeJson(out, Serial);
+  Serial.println();
 }
 
 // Wiring check: which I2C addresses answer on the screen pins (and on the pins swapped),
@@ -318,8 +458,13 @@ void setup() {
   Wire.begin(OLED_SDA, OLED_SCL);
   oledOk = oled.begin(SSD1306_SWITCHCAPVCC, 0x3C);
 
-  EEPROM.begin(sizeof(Saved));
+  EEPROM.begin(sizeof(Saved) + sizeof(Ext));
   EEPROM.get(0, saved);
+  EEPROM.get(sizeof(Saved), ext);
+  if (ext.magic != EXT_MAGIC) {
+    memset(&ext, 0, sizeof ext);
+    ext.magic = EXT_MAGIC;
+  }
   if (saved.magic != EE_MAGIC) {
     // First boot: a fresh key from the hardware random number generator.
     for (int i = 0; i < 32; i += 4) {
@@ -348,5 +493,7 @@ void loop() {
   else if (t == "diag") diag();
   else if (t == "findoled") findOled();
   else if (t == "lines") lines();
+  else if (t == "acct_import") acctImport(in);
+  else if (t == "acct_list") acctList();
   else if (t == "show") show(in);
 }

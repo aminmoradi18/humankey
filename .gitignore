@@ -17,3 +17,4 @@ gate/state/counters.json
 gate/state/devices.json
 logs/sample/
 .pio/
+device_emu/ledger.json

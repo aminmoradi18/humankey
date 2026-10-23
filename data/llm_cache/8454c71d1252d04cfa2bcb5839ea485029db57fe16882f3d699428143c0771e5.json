@@ -1,0 +1,1 @@
+{"model":"nemotron-mini","text":" {\"checks\": [\"invoice_header\", \"bank_account\"], \"reason\": \"This payment needs checks to verify the invoice amount and the payee account matches the vendor master.\"}"}
