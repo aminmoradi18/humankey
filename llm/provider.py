@@ -4,6 +4,8 @@ Backends, all OpenAI-compatible chat completions:
 - meterless: Meterless Runtime served by Nightshift (primary provider, Power rule).
   Bearer token + `meterless-app` + `meterless-scope: user` headers, 180 s timeout.
 - openrouter: NVIDIA Nemotron models for development (free variants first).
+- ollama: open-weights Nemotron served locally (no key, no internet).
+- custom: any other OpenAI-compatible endpoint.
 - replay: answers from data/llm_cache only (SAMPLE_MODE, no credentials).
 
 Every call appends to logs/llm.jsonl with the provider and the concrete model
@@ -63,6 +65,16 @@ class LLM:
             first = os.environ.get("LLM_MODEL", OPENROUTER_FALLBACK[0])
             self.models = [first] + [m for m in OPENROUTER_FALLBACK if m != first]
             self.timeout = 120
+        elif self.provider in ("ollama", "custom"):
+            # ollama: local open-weights Nemotron on this machine's NVIDIA GPU.
+            # custom: any other OpenAI-compatible endpoint (CUSTOM_BASE_URL, CUSTOM_API_KEY).
+            local = self.provider == "ollama"
+            self.base = os.environ.get("OLLAMA_BASE_URL" if local else "CUSTOM_BASE_URL",
+                                       "http://127.0.0.1:11434/v1" if local else "").rstrip("/")
+            self.key = "ollama" if local else os.environ.get("CUSTOM_API_KEY", "")
+            names = os.environ.get("OLLAMA_MODEL" if local else "CUSTOM_MODEL", "")
+            self.models = [m.strip() for m in names.split(",") if m.strip()]
+            self.timeout = 600 if local else 120
         elif self.provider == "replay":
             self.base, self.key, self.models, self.timeout = "", "", ["replay"], 0
         else:

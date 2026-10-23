@@ -13,3 +13,7 @@ node_modules/
 data/.world/
 device_emu/counter
 logs/*.log
+data/hmem/
+gate/state/*.secret
+gate/state/counters.json
+gate/state/devices.json

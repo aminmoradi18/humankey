@@ -7,11 +7,17 @@
 //   decision -> fact about the invoice entity + "billed_by" edge to the vendor
 // and serves a context builder the planner and critic read before they act.
 //
+// Memory: Meterless H-MEM reference (hmem/src, Apache-2.0). What a human says when
+// answering on the key is stored as a long-term record tagged with the vendor and the
+// check it explains, with provenance; the risk agent recalls it next time, and the
+// human's later answers feed back (helpful / wrong) into its confidence.
+//
 // Run: npx tsx meterless/server.ts      (127.0.0.1:${WORLD_PORT:-8711})
 import http from "node:http";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { WorldModel, entityIdFromName, sha256Hex } from "./world-model/src/index.ts";
+import { HMEM } from "./hmem/src/index.ts";
 
 const here = path.dirname(fileURLToPath(import.meta.url));
 const port = Number(process.env.WORLD_PORT ?? 8711);
@@ -20,6 +26,8 @@ const world = new WorldModel({
   storage: "local",
   directory: process.env.WORLD_DIR ?? path.join(here, "..", "data"),
 });
+
+const memory = new HMEM({ persistDir: process.env.HMEM_DIR ?? path.join(here, "..", "data", "hmem"), actor: "humankey" });
 
 type Receipt = { receipt_id: string; sql: string; result_sha256: string; status: string; ran_at: string; agent: string; purpose: string };
 type Finding = { check: string; signal: string; summary: string; facts: Record<string, unknown>; receipt_ids: string[] };
@@ -79,7 +87,30 @@ function context(vendor: string) {
   };
 }
 
+function remember(b: { vendor: string; check: string; content: string; by: string; invoice_id: string }) {
+  const rec = memory.add({
+    content: b.content, type: "factual", layer: "long_term", confidence: 0.9,
+    tags: [`vendor:${b.vendor}`, `check:${b.check}`], source: `human:${b.by}`,
+    provenance: { origin: "user_correction", learnedAt: Date.now(), label: "answer given on the key", refs: [b.invoice_id] },
+  });
+  return { id: rec.id, confidence: rec.confidence };
+}
+
+function recall(vendor: string, check: string, q: string) {
+  // Scope by tags (vendor + check), rank by H-MEM's score; no relevance cut-off, because the
+  // scope is exact and the caller applies its own confidence floor.
+  const res = memory.query(`${check} ${q}`, { topN: 50, threshold: 0 });
+  const hits = res.memories
+    .filter((m) => m.memory.tags.includes(`vendor:${vendor}`) && m.memory.tags.includes(`check:${check}`) && !m.memory.supersededBy)
+    .map((m) => ({ id: m.memory.id, content: m.memory.content, confidence: m.memory.confidence, relevance: m.relevance,
+                   source: m.memory.source, refs: m.memory.provenance?.refs ?? [] }));
+  return { hits, trace: res.trace };
+}
+
 const routes: Record<string, (q: URLSearchParams, b: any) => unknown> = {
+  "POST /memory/add": (_q, b) => remember(b),
+  "GET /memory/recall": (q) => recall(q.get("vendor") ?? "", q.get("check") ?? "", q.get("q") ?? ""),
+  "POST /memory/feedback": (_q, b) => { memory.feedback(b.id, b.kind); return { ok: true }; },
   "GET /health": () => ({ ok: true, engine: "meterless-world-model-reference", events: world.events().length }),
   "POST /observe": (_q, b) => observe(b),
   "POST /decision": (_q, b) => decide(b),

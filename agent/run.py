@@ -7,7 +7,7 @@ import os
 import sys
 from concurrent.futures import ThreadPoolExecutor
 
-from agent.agents import REQUIRED, Critic, Guard, Investigator, Planner, Reporter, Risk, event
+from agent.agents import REQUIRED, Critic, Guard, Investigator, Planner, Reporter, Risk, apply_memory, event
 from agent.tools import DB, Tools
 from common.env import ROOT
 from agent.world import World
@@ -59,6 +59,9 @@ def investigate(invoice_id, z, llm, world=None, run_id="run", max_revisions=1):
     if world and vendor:
         w = world.observe(invoice_id, vendor, run_id, receipts_for(findings), findings)
         event("world", invoice_id, agent="investigator", **w["ingest"])
+    remembered = apply_memory(world, vendor, findings) if world and vendor else []
+    if remembered:
+        event("memory", invoice_id, agent="risk", recalled=remembered)
     decision = Risk.decide(draft, findings, flags, integrity, reasons)
     key_text = Reporter.key_text(invoice_id, decision, findings, flags)
     proposal = {
@@ -67,7 +70,7 @@ def investigate(invoice_id, z, llm, world=None, run_id="run", max_revisions=1):
         "claims": draft["claims"], "explanation": draft.get("explanation", ""),
         "findings": findings, "injection_flags": flags, "integrity": integrity,
         "critic": {"verdict": verdict, "reasons": reasons, "revisions": revisions},
-        "plan": plan, "key_text": key_text,
+        "plan": plan, "key_text": key_text, "memory": remembered,
     }
     event("decision", invoice_id, agent="risk", **decision, key_text=key_text)
     if world and vendor:

@@ -17,22 +17,29 @@ OUT = HERE / "out"
 START = datetime(2025, 10, 1)
 TODAY = datetime(2026, 10, 20)
 
+# Real companies with their real LEI (GLEIF, CC0 open data, looked up 2026-10-23).
+# Everything else about them here (amounts, invoices, accounts, e-mails) is synthetic:
+# the frauds are impersonations of the vendor, not wrongdoing by the vendor.
 VENDORS = [
-    # name, country, domain, has_registry_id
-    ("Acme Steel Supply", "US", "acmesteel.com", True),
-    ("Baltic Bearings", "LT", "balticbearings.lt", True),
-    ("Cobalt Fasteners", "DE", "cobalt-fasteners.de", True),
-    ("Delta Packaging", "US", "deltapack.com", True),
-    ("Evergreen Logistics", "NL", "evergreenlog.nl", True),
-    ("Fjord Hydraulics", "NO", "fjordhydraulics.no", True),
-    ("Granite Tooling", "US", "granitetooling.com", True),
-    ("Helix Electronics", "TW", "helix-elec.tw", True),
-    ("Ionic Coatings", "GB", "ioniccoatings.co.uk", True),
-    ("Juniper Office Supply", "US", "juniperoffice.com", True),
-    ("Kestrel Industrial Parts", "US", "kestrelparts.com", False),  # absent from registry
+    # name, country, domain, LEI or None
+    ("Nucor Corporation", "US", "nucor.com", "549300GGJCRSI2TIEJ46"),
+    ("Aktiebolaget SKF", "SE", "skf.com", "549300B6HWYEE57O8J84"),
+    ("Fastenal Company", "US", "fastenal.com", "529900PP0C7H2HHPSJ32"),
+    ("Sealed Air Corporation", "US", "sealedair.com", "Q0M0CZB4YN6JZ65WXI09"),
+    ("W.W. Grainger, Inc.", "US", "grainger.com", "549300TWZSP6O1IH2V34"),
+    ("Parker-Hannifin Corporation", "US", "parker.com", "5493002CONDB4N2HKI23"),
+    ("Kennametal Inc.", "US", "kennametal.com", "549300GZDSG25XUV0Y08"),
+    ("Arrow Electronics, Inc.", "US", "arrow.com", "549300YNNLBXT8N8R512"),
+    ("Akzo Nobel N.V.", "NL", "akzonobel.com", "724500XYIJUGXAA5QD70"),
+    ("Avery Dennison Corporation", "US", "averydennison.com", "549300PW7VPFCYKLIV37"),
+    ("Kestrel Industrial Parts", "US", "kestrelparts.com", "5493000KESTREL0PARTS"),  # invented; LEI unknown to GLEIF
+    ("3M Company", "US", "3m.com", "LUZQVYP4VS22CLWDAR65"),
 ]
 
+INVENTED = {"Kestrel Industrial Parts"}
+
 # invoice plan: (vendor index, kind). kind "ok" = clean, else fraud_type.
+# Shuffled with the seed, so the frauds are not in a fixed position.
 PLAN = [
     (0, "ok"), (1, "ok"), (2, "ok"), (3, "ok"), (5, "ok"), (8, "ok"), (9, "ok"),
     (4, "new_iban_lookalike"),
@@ -41,7 +48,7 @@ PLAN = [
     (7, "amount_anomaly"),
     (3, "split_payment"), (3, "split_payment"),
     (1, "prompt_injection"),
-    (2, "ok_bank_change_verified"),  # bank changed, but verified by phone: should clear
+    (11, "ok_bank_change_verified"),  # bank changed, but verified by phone: should clear
 ]
 
 EXPECTED = {
@@ -49,6 +56,15 @@ EXPECTED = {
     "new_iban_lookalike": "block", "no_registry": "escalate", "no_po": "escalate",
     "amount_anomaly": "escalate", "split_payment": "escalate", "prompt_injection": "block",
 }
+
+
+def lookalike(domain):
+    """One look-alike character swap, as used in invoice-redirect fraud."""
+    name, _, tld = domain.partition(".")
+    for a, b in (("i", "1"), ("l", "1"), ("o", "0"), ("g", "q")):
+        if a in name:
+            return name.replace(a, b, 1) + "." + tld
+    return name + "-billing." + tld
 
 
 def h(s):
@@ -76,17 +92,17 @@ def main(seed):
     rng = random.Random(seed)
     OUT.mkdir(parents=True, exist_ok=True)
     vendors, ibans, typical = [], {}, {}
-    for i, (name, country, domain, has_reg) in enumerate(VENDORS):
+    for i, (name, country, domain, lei) in enumerate(VENDORS):
         vid = f"V{i + 1:03d}"
         num = iban(rng)
         ibans[vid] = num
         typical[vid] = rng.choice([1800, 4200, 7500, 12000, 23000])
         since = START - timedelta(days=rng.randint(400, 2000))
-        if not has_reg:
+        if name in INVENTED:
             since = TODAY - timedelta(days=40)
         vendors.append({
-            "vendor_id": vid, "name": name, "legal_name": f"{name} Ltd",
-            "country": country, "registry_id": f"REG-{h(name)[:8].upper()}" if has_reg else "",
+            "vendor_id": vid, "name": name, "legal_name": name,
+            "country": country, "registry_id": lei or "",
             "email_domain": domain, "iban_last4": num[-4:], "iban_hash": h(num),
             "bank_since": ts(since)[:10], "contact_name": rng.choice(
                 ["A. Novak", "M. Reyes", "J. Lindqvist", "S. Okafor", "L. Chen", "R. Patel"]),
@@ -94,7 +110,9 @@ def main(seed):
 
     # 12 months of normal history: POs and payments
     pos, payments = [], []
-    for v in vendors[:-1]:
+    for v in vendors:
+        if v["name"] in INVENTED:
+            continue  # a new vendor: no history
         vid = v["vendor_id"]
         for m in range(12):
             day = START + timedelta(days=30 * m + rng.randint(0, 20))
@@ -108,7 +126,9 @@ def main(seed):
 
     emails, changes, invoices, labels = [], [], [], []
     vmap = {v["vendor_id"]: v for v in vendors}
-    for n, (vi, kind) in enumerate(PLAN, 1):
+    plan = list(PLAN)
+    rng.shuffle(plan)
+    for n, (vi, kind) in enumerate(plan, 1):
         v = vendors[vi]
         vid = v["vendor_id"]
         inv = f"INV{n:04d}"
@@ -120,7 +140,7 @@ def main(seed):
         has_po = True
 
         if kind == "new_iban_lookalike":
-            domain = domain.replace("log", "1og")  # evergreen1og.nl
+            domain = lookalike(domain)  # e.g. gra1nger.com
             pay_iban = iban(rng)
             subject = "URGENT: updated bank details for payment"
             changes.append({"request_id": f"BC{len(changes) + 1:03d}", "vendor_id": vid,

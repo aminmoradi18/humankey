@@ -8,6 +8,7 @@ import os
 import subprocess
 import time
 import urllib.error
+import urllib.parse
 import urllib.request
 
 from common.env import ROOT
@@ -76,3 +77,16 @@ class World:
             elif v.get("signal") == "risk_up":
                 out.append(f"{f['predicate']}: {v.get('summary')} (seen on {v.get('invoice_id')}, by {f['by']})")
         return out
+
+    # -- H-MEM: what humans told us --------------------------------------
+    def remember(self, vendor, check, content, by, invoice_id):
+        return self._req("POST", "/memory/add", {"vendor": vendor, "check": check, "content": content,
+                                                 "by": by, "invoice_id": invoice_id})
+
+    def recall(self, vendor, check, query=""):
+        q = urllib.parse.urlencode({"vendor": vendor, "check": check, "q": query})
+        return self._req("GET", "/memory/recall?" + q)["hits"]
+
+    def feedback(self, memory_id, kind):
+        return self._req("POST", "/memory/feedback", {"id": memory_id, "kind": kind})
+

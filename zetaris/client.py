@@ -167,7 +167,7 @@ class ZetarisClient:
         r = {
             "receipt_id": "rcpt_" + sha(text + ran_at + str(uuid.uuid4()))[:12],
             "sql": text,
-            "sources": sorted(set(re.findall(r"\bnorthwind_\w+\.(\w+)", text, re.I))),
+            "sources": sorted(set(re.findall(r"\b((?:northwind_erp|gleif)\.\w+)", text, re.I))),
             "row_count": len(data),
             "ran_at": ran_at,
             "result_sha256": sha(canonical({"h": headers, "d": data})),

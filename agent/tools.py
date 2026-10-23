@@ -10,11 +10,12 @@ is never a pass).
 from difflib import SequenceMatcher
 
 DB = "northwind_erp"
+REGISTRY = "gleif.lei_entities"
 APPROVAL_THRESHOLD = 10000.0
 
 CATALOG = {
     "invoice_header": "Invoice amount, PO reference, payee account (last 4) and the e-mail it came with.",
-    "vendor_registry": "Is the vendor on file with a company registry id, and how long has it been a vendor?",
+    "vendor_registry": "Is the vendor's LEI confirmed in the public GLEIF registry (name, status), and payment history?",
     "bank_account": "Does the payee account match the vendor master? Any bank-change request, and was it verified?",
     "sender_domain": "Does the sender e-mail domain match the vendor's domain (look-alike check)?",
     "purchase_order": "Is there a purchase order for this vendor and amount?",
@@ -74,21 +75,41 @@ class Tools:
                   f"{invoice_id}: {amt:,.2f} USD to account ...{inv['iban_last4']}", facts, [rc])
 
     def t_vendor_registry(self, invoice_id):
+        """Federated: our vendor master (Postgres) joined with the live GLEIF registry (REST)."""
         rows, rc = self.q(f"SELECT v.vendor_id, v.name, v.registry_id, v.bank_since, v.country, "
+                          f"g.lei AS gleif_lei, g.legal_name AS gleif_name, g.country AS gleif_country, "
+                          f"g.entity_status, g.registration_status, "
                           f"(SELECT count(*) FROM {DB}.payments p WHERE p.vendor_id = v.vendor_id) AS paid_count "
                           f"FROM {DB}.vendors v JOIN {DB}.invoices i ON i.vendor_id = v.vendor_id "
-                          f"WHERE i.invoice_id = :id", {"id": invoice_id}, "vendor registry")
+                          f"LEFT JOIN {REGISTRY} g ON g.lei = v.registry_id "
+                          f"WHERE i.invoice_id = :id", {"id": invoice_id}, "vendor vs GLEIF registry")
         if not rows:
             return _unknown("vendor_registry", [rc])
         v = rows[0]
         paid = int(_num(v["paid_count"]) or 0)
-        facts = {"vendor": v["name"], "registry_id": v["registry_id"] or None, "payments_on_file": paid,
-                 "bank_since": v["bank_since"]}
+        facts = {"vendor": v["name"], "lei": v["registry_id"] or None, "gleif_name": v["gleif_name"],
+                 "gleif_status": v["registration_status"], "entity_status": v["entity_status"],
+                 "payments_on_file": paid}
         if not v["registry_id"]:
+            return _f("vendor_registry", "risk_up", f"{v['name']} has no LEI on file ({paid} past payments)",
+                      facts, [rc])
+        if not v["gleif_lei"]:
             return _f("vendor_registry", "risk_up",
-                      f"{v['name']} has no company registry id and {paid} past payments", facts, [rc])
+                      f"LEI {v['registry_id']} of {v['name']} is not in the GLEIF registry ({paid} past payments)",
+                      facts, [rc])
+        if v["gleif_name"].lower().replace(",", "").replace(".", "") != v["name"].lower().replace(",", "").replace(".", ""):
+            return _f("vendor_registry", "risk_up",
+                      f"GLEIF name for LEI {v['registry_id']} is {v['gleif_name']!r}, not {v['name']!r}", facts, [rc])
+        if v["entity_status"] != "ACTIVE":
+            return _f("vendor_registry", "risk_up", f"GLEIF lists {v['gleif_name']} as {v['entity_status']}",
+                      facts, [rc])
+        if v["registration_status"] != "ISSUED":
+            return _f("vendor_registry", "neutral",
+                      f"{v['gleif_name']} is an active legal entity in GLEIF, but its LEI registration is "
+                      f"{v['registration_status']} (renewal overdue; informational)", facts, [rc])
         return _f("vendor_registry", "risk_down",
-                  f"{v['name']} is registered ({v['registry_id']}) with {paid} past payments", facts, [rc])
+                  f"{v['gleif_name']} confirmed in GLEIF (LEI {v['registry_id']}, ISSUED), {paid} past payments",
+                  facts, [rc])
 
     def t_bank_account(self, invoice_id):
         rows, rc = self.q(f"SELECT i.iban_hash AS inv_hash, i.iban_last4 AS inv_last4, v.iban_hash AS master_hash, "

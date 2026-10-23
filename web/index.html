@@ -1,0 +1,130 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>HumanKey</title>
+<style>
+:root{--bg:#f6f5f2;--panel:#fff;--ink:#1d1f23;--muted:#6b6f78;--line:#e3e1dc;--up:#b42318;--down:#13795b;--neutral:#8a6d00;--unknown:#6941c6;--accent:#1f4fd1;--oled:#0b0d10;--oledInk:#7cf2ff}
+@media (prefers-color-scheme:dark){:root{--bg:#121316;--panel:#1b1d21;--ink:#e8e9ec;--muted:#9a9ea8;--line:#2b2e34;--up:#f97066;--down:#47cd89;--neutral:#fdb022;--unknown:#b692f6;--accent:#84adff}}
+*{box-sizing:border-box}body{margin:0;background:var(--bg);color:var(--ink);font:14px/1.45 system-ui,-apple-system,Segoe UI,Roboto,sans-serif}
+header{display:flex;flex-wrap:wrap;gap:16px;align-items:baseline;padding:16px 20px;border-bottom:1px solid var(--line)}
+h1{font-size:18px;margin:0}h1 span{color:var(--muted);font-weight:400}
+.stats{display:flex;gap:18px;flex-wrap:wrap;color:var(--muted)}.stats b{color:var(--ink);font-size:16px}
+main{display:grid;grid-template-columns:340px 1fr 300px;gap:16px;padding:16px 20px}
+@media (max-width:1100px){main{grid-template-columns:1fr}}
+.panel{background:var(--panel);border:1px solid var(--line);border-radius:10px;padding:12px}
+.list button{display:flex;width:100%;gap:8px;align-items:center;text-align:left;background:none;border:0;border-bottom:1px solid var(--line);padding:9px 4px;color:inherit;cursor:pointer;font:inherit}
+.list button.sel{background:color-mix(in srgb,var(--accent) 10%,transparent)}
+.pill{font-size:11px;padding:2px 7px;border-radius:99px;border:1px solid currentColor;white-space:nowrap}
+.BLOCKED{color:var(--up)}.AWAITING_KEY{color:var(--neutral)}.QUEUED_AUTO{color:var(--down)}.EXECUTED{color:var(--down)}
+.amt{margin-left:auto;font-variant-numeric:tabular-nums;color:var(--muted)}
+h2{font-size:16px;margin:0 0 4px}h3{font-size:12px;text-transform:uppercase;letter-spacing:.06em;color:var(--muted);margin:16px 0 6px}
+.f{border-left:3px solid var(--line);padding:4px 10px;margin:6px 0}.f.risk_up{border-color:var(--up)}.f.risk_down{border-color:var(--down)}.f.neutral{border-color:var(--neutral)}.f.unknown{border-color:var(--unknown)}
+.f .sig{font-size:11px;font-weight:600}.risk_up .sig{color:var(--up)}.risk_down .sig{color:var(--down)}.neutral .sig{color:var(--neutral)}.unknown .sig{color:var(--unknown)}
+details{margin:2px 0}summary{cursor:pointer;color:var(--muted);font-size:12px}
+code,pre{font:12px/1.4 ui-monospace,SFMono-Regular,Menlo,monospace}pre{white-space:pre-wrap;background:var(--bg);padding:8px;border-radius:6px;margin:4px 0}
+.oled{background:var(--oled);color:var(--oledInk);font:15px/1.35 ui-monospace,monospace;border-radius:8px;padding:12px 14px;min-height:104px;white-space:pre;border:6px solid #2a2d33}
+.btns{display:flex;gap:8px;margin-top:10px}.btns button,.rel{flex:1;padding:9px;border-radius:8px;border:1px solid var(--line);background:var(--panel);color:var(--ink);font:inherit;cursor:pointer}
+.ok{border-color:var(--down)!important;color:var(--down)!important}.no{border-color:var(--up)!important;color:var(--up)!important}
+.rel{background:var(--accent);color:#fff;border:0;width:100%;margin-top:8px}.rel:disabled{opacity:.45;cursor:default}
+.tag{display:inline-block;font-size:11px;padding:1px 6px;border-radius:4px;background:var(--bg);color:var(--muted);margin:2px 4px 2px 0}
+.emu{font-size:11px;color:var(--neutral);font-weight:700;letter-spacing:.08em}
+.muted{color:var(--muted)}.ev{font-size:12px;border-bottom:1px dashed var(--line);padding:3px 0}
+</style>
+</head>
+<body>
+<header>
+  <h1>HumanKey <span>· the agent explains why, the human holds the key</span></h1>
+  <div class="stats" id="stats"></div>
+</header>
+<main>
+  <section class="panel list" id="list"></section>
+  <section class="panel" id="detail"><p class="muted">Pick an invoice.</p></section>
+  <aside>
+    <div class="panel">
+      <div id="devlabel" class="emu"></div>
+      <div class="oled" id="oled"></div>
+      <div class="btns" id="keybtns">
+        <button class="ok" onclick="answer('approve')">Approve</button>
+        <button class="no" onclick="answer('reject')">Reject</button>
+      </div>
+      <p class="muted" id="devnote"></p>
+    </div>
+    <div class="panel" style="margin-top:16px">
+      <h3 style="margin-top:0">Models used</h3><div id="models" class="muted"></div>
+      <h3>Agent trace</h3><div id="events"></div>
+    </div>
+  </aside>
+</main>
+<script>
+let S = null, sel = null;
+const $ = (id) => document.getElementById(id);
+const esc = (s) => String(s ?? "").replace(/[&<>"]/g, (c) => ({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;"}[c]));
+const money = (n) => "$" + Number(n || 0).toLocaleString("en-US", {maximumFractionDigits: 0});
+const status = (it) => it.paid ? "EXECUTED" : it.gate_event ? it.gate_event.kind.toUpperCase() : it.route;
+
+async function load() {
+  try { S = await (await fetch("/api/state")).json(); } catch (e) { return; }
+  const it = S.items;
+  const n = (r) => it.filter((x) => x.route === r).length;
+  $("stats").innerHTML = `<span><b>${it.length}</b> invoices</span><span><b>${n("BLOCKED")}</b> blocked</span>` +
+    `<span><b>${n("AWAITING_KEY")}</b> need the key</span><span><b>${n("QUEUED_AUTO")}</b> auto-cleared</span>` +
+    `<span><b>${it.filter((x) => x.paid).length}</b> paid</span>`;
+  $("list").innerHTML = it.map((x) => `<button class="${x.invoice_id === sel ? "sel" : ""}" onclick="pick('${x.invoice_id}')">
+      <span class="pill ${status(x)}">${status(x).replace("_", " ")}</span><span>${x.invoice_id}</span>
+      <span class="amt">${money(x.amount)}</span></button>`).join("");
+  const d = S.device;
+  $("devlabel").textContent = d.kind === "emulator" ? "EMULATOR · NOT THE HARDWARE KEY" : "HARDWARE KEY";
+  $("oled").textContent = d.pending || (d.busy ? "waiting for the\nkey..." : "HumanKey\nready");
+  $("keybtns").style.display = d.kind === "emulator" ? "flex" : "none";
+  $("devnote").textContent = d.kind === "emulator" ? "Signs with the emulator's own Ed25519 key, labelled 'emulator' in every record."
+    : "Press the buttons on the device.";
+  $("models").innerHTML = Object.entries(S.models).map(([m, c]) => `<div><code>${esc(m)}</code> ×${c}</div>`).join("") || "none yet";
+  $("events").innerHTML = S.events.slice(-14).reverse().map((e) =>
+    `<div class="ev"><b>${esc(e.invoice_id)}</b> ${esc(e.agent || "")} · ${esc(e.kind)}${e.verdict ? " · " + esc(e.verdict) : ""}${e.reason ? " · " + esc(e.reason) : ""}</div>`).join("");
+  if (sel) render();
+}
+
+function pick(id) { sel = id; load(); }
+
+function render() {
+  const x = S.items.find((i) => i.invoice_id === sel); if (!x) return;
+  const f = Object.values(x.findings);
+  const rc = Object.fromEntries(x.receipts.map((r) => [r.receipt_id, r]));
+  const canRelease = !x.paid && x.route !== "BLOCKED" && !S.device.busy;
+  const soft = f.filter((k) => S.soft_checks.includes(k.check) && k.signal === "risk_up" && !k.settled_by_memory);
+  $("detail").innerHTML = `
+    <h2>${x.invoice_id} · ${money(x.amount)} <span class="pill ${status(x)}">${status(x).replace("_", " ")}</span></h2>
+    <div class="muted">vendor ${esc(x.vendor_id)} · proposal <b>${x.proposal}</b> · risk ${x.risk} · integrity ${x.integrity.verdict}</div>
+    <h3>Why</h3><div>${esc(x.explanation)}</div>
+    ${x.injection_flags.length ? `<h3>Prompt injection in the invoice text</h3>` + x.injection_flags.map((g) =>
+      `<div class="f risk_up"><span class="sig">${esc(g.by)}</span> ${esc(g.quote || g.match)}</div>`).join("") : ""}
+    <h3>Evidence (SQL through Zetaris)</h3>
+    ${f.map((k) => `<div class="f ${k.signal}"><span class="sig">${k.signal.replace("_", " ")}</span> <b>${k.check}</b> — ${esc(k.summary)}
+      ${k.receipt_ids.map((id) => rc[id] ? `<details><summary>receipt ${id} · ${rc[id].row_count} rows · ${rc[id].status} · ${(rc[id].sources || []).join(", ")}</summary>
+        <pre>${esc(rc[id].sql)}</pre><code>sha256 ${rc[id].result_sha256.slice(0, 16)}… · ${rc[id].mode} · ${rc[id].ran_at}</code></details>` : "").join("")}</div>`).join("")}
+    <h3>Critic</h3><div>${x.critic.verdict} after ${x.critic.revisions} revision(s)${x.critic.reasons.length ? ": " + esc(x.critic.reasons.join("; ")) : ""}</div>
+    <h3>Plan</h3><div>${x.plan.checks.map((c) => `<span class="tag">${c}</span>`).join("")}<div class="muted">${esc(x.plan.reason)}</div></div>
+    <h3>On the key</h3><div class="oled" style="max-width:260px">${esc(x.key_text)}</div>
+    ${x.paid ? `<p>Paid: ${esc(x.paid.released_by)}</p>` : ""}
+    ${x.gate_event && !x.paid ? `<p>Gate: ${esc(x.gate_event.kind)} ${esc(x.gate_event.reason || "")}</p>` : ""}
+    <button class="rel" ${canRelease ? "" : "disabled"} onclick="release('${x.invoice_id}')">${x.route === "AWAITING_KEY" ? "Send to the key" : "Release payment"}</button>
+    ${(x.memory || []).length ? `<h3>Settled by memory (H-MEM)</h3>` + x.memory.map((m) =>
+      `<div class="f neutral"><span class="sig">${esc(m.check)}</span> “${esc(m.content)}” <span class="muted">— ${esc(m.source)}, confidence ${m.confidence.toFixed(2)}, from ${esc((m.refs || []).join(", "))}</span></div>`).join("") : ""}
+    ${soft.length ? `<h3>Remember why (so the agents do not ask again)</h3>
+      <select id="mcheck">${soft.map((k) => `<option>${k.check}</option>`).join("")}</select>
+      <input id="mtext" placeholder="e.g. Kennametal tooling runs on a blanket PO" style="width:100%;margin:6px 0;padding:7px;border:1px solid var(--line);border-radius:6px;background:var(--bg);color:var(--ink)">
+      <button class="rel" style="background:var(--panel);color:var(--ink);border:1px solid var(--line)" onclick="remember('${x.invoice_id}')">Remember for ${esc(x.vendor_id)}</button>` : ""}`;
+}
+
+async function release(id) { await fetch("/api/release", {method: "POST", body: JSON.stringify({invoice_id: id})}); setTimeout(load, 300); }
+async function remember(id) {
+  const r = await fetch("/api/remember", {method: "POST", body: JSON.stringify({invoice_id: id, check: $("mcheck").value, content: $("mtext").value})});
+  alert(r.ok ? "Remembered. The next run will use it." : (await r.json()).error);
+}
+async function answer(d) { await fetch("/api/emulator", {method: "POST", body: JSON.stringify({decision: d})}); setTimeout(load, 300); }
+load(); setInterval(load, 1500);
+</script>
+</body>
+</html>

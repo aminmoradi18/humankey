@@ -16,6 +16,10 @@ from common.jsonl import append
 from llm.provider import LLMError
 
 REQUIRED = ["invoice_header", "vendor_registry", "bank_account"]
+# Findings a remembered human answer may settle. Account, sender domain, registry
+# misses and prompt injection never can: those always go back to a person.
+SOFT_CHECKS = {"purchase_order", "amount_history", "split_pattern"}
+MEMORY_MIN_CONFIDENCE = 0.8
 INJECTION_RULES = re.compile(
     r"(ignore (all |any )?(previous|prior) (checks|instructions)|system note to ai|ai assistant|"
     r"mark (this|the) invoice as (clear|approved)|pre-approved by the cfo)", re.I)
@@ -179,7 +183,7 @@ class Risk:
 
     @staticmethod
     def decide(draft, findings, injection_flags, integrity, critic_reasons):
-        sig = {k: f["signal"] for k, f in findings.items()}
+        sig = {k: ("neutral" if f.get("settled_by_memory") else f["signal"]) for k, f in findings.items()}
         amount = findings.get("invoice_header", {}).get("facts", {}).get("amount") or 0
         if injection_flags or (sig.get("bank_account") == "risk_up" and sig.get("sender_domain") == "risk_up"):
             proposal, risk = "block", "high"
@@ -202,13 +206,26 @@ class Risk:
 
 
 # ----------------------------------------------------------------------
+def apply_memory(world, vendor, findings):
+    """Ask H-MEM whether a person already explained a soft finding for this vendor."""
+    used = []
+    for check, f in findings.items():
+        if check not in SOFT_CHECKS or f["signal"] != "risk_up":
+            continue
+        hits = [h for h in world.recall(vendor, check, f["summary"]) if h["confidence"] >= MEMORY_MIN_CONFIDENCE]
+        if hits:
+            f["settled_by_memory"] = hits[0]
+            used.append({"check": check, **hits[0]})
+    return used
+
+
 class Reporter:
     name = "reporter"
 
     @staticmethod
     def key_text(invoice_id, decision, findings, injection_flags=()):
         amount = findings.get("invoice_header", {}).get("facts", {}).get("amount") or 0
-        ups = [f for f in findings.values() if f["signal"] in ("risk_up", "unknown")]
+        ups = [f for f in findings.values() if f["signal"] in ("risk_up", "unknown") and not f.get("settled_by_memory")]
         if injection_flags:
             ups.insert(0, {"check": "injection"})
         short = {"bank_account": "NEW bank account", "sender_domain": "lookalike domain",

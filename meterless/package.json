@@ -2,10 +2,11 @@
   "name": "humankey-meterless",
   "private": true,
   "type": "module",
-  "description": "HumanKey's Meterless engines: World Model service (reference engine, Apache-2.0) and its conformance run.",
+  "description": "HumanKey's Meterless engines: World Model and H-MEM service (reference engines, Apache-2.0) and their conformance runs.",
   "scripts": {
     "world": "tsx server.ts",
-    "conformance:world": "WORLD_MODEL_IMPL=$PWD/world-model/src/index.ts tsx world-model/conformance/runner.ts"
+    "conformance:world": "WORLD_MODEL_IMPL=$PWD/world-model/src/index.ts tsx world-model/conformance/runner.ts",
+    "conformance:hmem": "HMEM_IMPL=$PWD/hmem/src/index.ts tsx hmem/conformance/runner.ts"
   },
   "devDependencies": {
     "tsx": "^4.20.0"
