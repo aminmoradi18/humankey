@@ -80,23 +80,34 @@ def investigate(invoice_id, z, llm, world=None, run_id="run", max_revisions=1):
     return proposal
 
 
+DQ_RULES = [("vendor_id", "invoices"), ("vendor_in_gleif", "vendors"), ("vendor_lei_current", "vendors"),
+            ("invoice_amount_positive", "invoices"), ("invoice_has_payee", "invoices"),
+            ("bank_change_verified", "bank_change_requests")]
+
+
 def coverage(z):
     """The work list and an independent count witness for it.
 
     The work list joins invoices to the vendor master (that is how the agents get vendor data);
-    an inner join silently drops an invoice whose vendor is missing. The witness counts the raw
-    table on its own and lists what the join lost (anti-join), so a gap cannot hide.
+    an inner join silently drops an invoice whose vendor is missing. Two independent witnesses
+    catch that: a plain count of the table, and Zetaris's own data-quality run of the USL foreign
+    key (invoices.vendor_id -> vendors), whose invalid records are the invoices the join lost.
     """
     rows, rc = z.query(f"SELECT i.invoice_id, i.vendor_id FROM {DB}.invoices i "
                        f"JOIN {DB}.vendors v ON v.vendor_id = i.vendor_id ORDER BY i.invoice_id",
                        purpose="work list", agent="planner")
     count, rc2 = z.query(f"SELECT count(*) AS n FROM {DB}.invoices", purpose="count witness", agent="critic")
-    lost, rc3 = z.query(f"SELECT i.invoice_id FROM {DB}.invoices i LEFT JOIN {DB}.vendors v "
-                        f"ON v.vendor_id = i.vendor_id WHERE v.vendor_id IS NULL ORDER BY i.invoice_id",
-                        purpose="count witness: rows the join dropped", agent="critic")
+    lost, rc3 = z.query(f"SHOW DQ INVALID RECORD vendor_id TABLE {DB}.invoices",
+                        purpose="count witness: Zetaris DQ foreign-key violations", agent="critic")
+    dq = {}
+    for rule, table in DQ_RULES:
+        r, _ = z.query(f"RUN DQ {rule} TABLE {DB}.{table}", purpose="data quality report", agent="critic")
+        if r:
+            dq[f"{table}.{rule}"] = {"valid": int(r[0]["valid_record"]), "invalid": int(r[0]["invalid_record"])}
     listed = {r["invoice_id"]: r["vendor_id"] for r in rows}
     witness = {"exp": int(count[0]["n"]) if count else None, "cov": len(listed),
-               "miss": [r["invoice_id"] for r in lost], "receipts": [rc["receipt_id"], rc2["receipt_id"], rc3["receipt_id"]]}
+               "miss": sorted(r["invoice_id"] for r in lost), "dq": dq,
+               "receipts": [rc["receipt_id"], rc2["receipt_id"], rc3["receipt_id"]]}
     return listed, witness
 
 
@@ -121,7 +132,7 @@ def main(ids):
     with ThreadPoolExecutor(max_workers=int(os.environ.get("RUN_WORKERS", "3"))) as pool:
         for result in pool.map(lambda g: run_group(g, run_id), groups.values()):
             for p in result:
-                p["witness"] = {k: witness[k] for k in ("exp", "cov", "miss")}
+                p["witness"] = {k: witness[k] for k in ("exp", "cov", "miss", "dq")}
                 out[p["invoice_id"]] = p
     for i in sorted(out):
         p = out[i]

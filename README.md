@@ -67,7 +67,12 @@ cp .env.example .env    # fill in Zetaris and model settings
 - `gleif.lei_entities`: the live GLEIF Legal Entity Identifier API (public, CC0), registered as a Lightning
   REST table and flattened with a SchemaStore view.
 
-One query joins both to check each vendor against the public registry. All agent SQL goes through one
+Both are modelled as one **Unified Semantic Layer** (`lightning.metastore.humankey.northwind`, six tables with
+primary and foreign keys); its `vendors` table is the ERP vendor master joined with the live registry, and
+every agent check reads the USL. **Data-quality rules** run on every pass: the foreign key
+`invoices.vendor_id` catches an invoice whose vendor is missing (the agents' join would drop it silently),
+and rules flag vendors unknown to GLEIF and bank changes nobody verified. Details and our reflection on
+the USL: `docs/ZETARIS_USL.md`. All agent SQL goes through one
 function with a write guard: anything that is not a read needs a key approval, and `INVALIDATE CACHE` is never
 sent. Setup DDL: `scripts/register_zetaris_sources.sql`.
 

@@ -1,0 +1,1 @@
+{"model":"nemotron-mini","text":" {\n  \"claims\": [\n    {\n      \"text\": \"The invoice does not have a purchase order referenced.\",\n      \"supports\": \"risk_up\",\n      \"receipt_ids\": [\"rcpt_59550647b59e\"]\n    }\n  ],\n  \"proposal\": \"block\",\n  \"explanation\": \"Please escalate this invoice to the vendor for a valid purchase order.\"\n}"}

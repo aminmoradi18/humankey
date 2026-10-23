@@ -1,1 +1,0 @@
-{"model":"nemotron-mini","text":" {\n  \"claims\": [\n    {\n      \"text\": \"The invoice is for goods delivered under a purchase order, a\",\n      \"supports\": \"risk_up|risk_down\",\n      \"receipt_ids\": [\"rcpt_...\"]\n    }\n  ],\n  \"proposal\": \"clear\",\n  \"explanation\": \"Please investigate the invoice and PO relationship to confirm or deny the claim.\"\n}"}

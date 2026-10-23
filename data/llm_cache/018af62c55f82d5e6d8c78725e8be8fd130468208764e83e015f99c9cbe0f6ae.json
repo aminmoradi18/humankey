@@ -1,1 +1,1 @@
-{"model":"nemotron-mini","text":" {\"checks\": [\"invoice_header\", \"vendor_registry\", \"bank_account\"], \"reason\": \"This payment needs checks to verify the invoice amount, vendor's LEI, and payee account match.\"}"}
+{"model":"nemotron-mini","text":" {\"checks\": [\"vendor_registry\", \"bank_account\"], \"reason\": \"This payment needs checks on the vendor's LEI confirmation and the match of the payee account with the vendor master.\"}"}

@@ -1,1 +1,1 @@
-{"model":"nemotron-mini","text":" {\"checks\": [\"vendor_registry\", \"bank_account\"], \"reason\": \"The payment needs verification of the vendor's LEI in the public GLEIF registry and a match between the payee account and the vendor master.\"}"}
+{"model":"nemotron-mini","text":" {\"checks\": [\"vendor_registry\", \"bank_account\"], \"reason\": \"This payment needs checks on the vendor's LEI confirmation and bank account details to ensure it is a legitimate payment.\"}"}

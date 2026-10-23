@@ -1,0 +1,1 @@
+{"model":"nemotron-mini","text":" [\n  {\n    \"text\": \"The vendor AVERY DENNISON CORPORATION has a history of making payments to the account on file for the goods delivered under PO. There are 12 past payments.\",\n    \"supports\": [\"risk_down\"],\n    \"receipt_ids\": [\"rcpt_265d7d5e45df\", \"rcpt_b9df5fed2cef\"]\n  }\n]"}

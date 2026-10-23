@@ -1,1 +1,1 @@
-{"model":"nemotron-mini","text":" {\"checks\": [\"invoice_header\", \"vendor_registry\", \"bank_account\"], \"reason\": \"This payment needs checks to verify the invoice amount, vendor's LEI, and the payee account's match with the vendor master.\"}"}
+{"model":"nemotron-mini","text":" {\"checks\": [\"purchase_order\", \"amount_history\"], \"reason\": \"This payment needs checks on purchase order and amount history to determine if it is a fraudulent invoice.\"}"}

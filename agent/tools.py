@@ -9,8 +9,9 @@ is never a pass).
 """
 from difflib import SequenceMatcher
 
-DB = "northwind_erp"
-REGISTRY = "gleif.lei_entities"
+# Every check reads the Unified Semantic Layer, one model over the ERP and the GLEIF registry
+# (scripts/usl_northwind.sql). Its vendors table is already federated with GLEIF.
+DB = "lightning.metastore.humankey.northwind"
 APPROVAL_THRESHOLD = 10000.0
 
 CATALOG = {
@@ -75,14 +76,13 @@ class Tools:
                   f"{invoice_id}: {amt:,.2f} USD to account ...{inv['iban_last4']}", facts, [rc])
 
     def t_vendor_registry(self, invoice_id):
-        """Federated: our vendor master (Postgres) joined with the live GLEIF registry (REST)."""
-        rows, rc = self.q(f"SELECT v.vendor_id, v.name, v.registry_id, v.bank_since, v.country, "
-                          f"g.lei AS gleif_lei, g.legal_name AS gleif_name, g.country AS gleif_country, "
-                          f"g.entity_status, g.registration_status, "
+        """The USL vendors table: our vendor master joined with the live GLEIF registry."""
+        rows, rc = self.q(f"SELECT v.vendor_id, v.name, v.lei AS registry_id, v.bank_since, v.country, "
+                          f"v.lei AS lei_on_file, v.gleif_legal_name AS gleif_name, v.gleif_entity_status AS entity_status, "
+                          f"v.gleif_registration_status AS registration_status, "
                           f"(SELECT count(*) FROM {DB}.payments p WHERE p.vendor_id = v.vendor_id) AS paid_count "
                           f"FROM {DB}.vendors v JOIN {DB}.invoices i ON i.vendor_id = v.vendor_id "
-                          f"LEFT JOIN {REGISTRY} g ON g.lei = v.registry_id "
-                          f"WHERE i.invoice_id = :id", {"id": invoice_id}, "vendor vs GLEIF registry")
+                          f"WHERE i.invoice_id = :id", {"id": invoice_id}, "vendor vs GLEIF registry (USL)")
         if not rows:
             return _unknown("vendor_registry", [rc])
         v = rows[0]
@@ -93,7 +93,7 @@ class Tools:
         if not v["registry_id"]:
             return _f("vendor_registry", "risk_up", f"{v['name']} has no LEI on file ({paid} past payments)",
                       facts, [rc])
-        if not v["gleif_lei"]:
+        if not v["gleif_name"]:
             return _f("vendor_registry", "risk_up",
                       f"LEI {v['registry_id']} of {v['name']} is not in the GLEIF registry ({paid} past payments)",
                       facts, [rc])

@@ -1,0 +1,1 @@
+{"data":[["gra1nger.com","grainger.com"]],"headers":["from_domain","email_domain"],"sql":"SELECT e.from_domain, v.email_domain FROM lightning.metastore.humankey.northwind.invoices i JOIN lightning.metastore.humankey.northwind.vendors v ON v.vendor_id = i.vendor_id LEFT JOIN lightning.metastore.humankey.northwind.emails e ON e.email_id = i.email_id WHERE i.invoice_id = 'INV0003'"}

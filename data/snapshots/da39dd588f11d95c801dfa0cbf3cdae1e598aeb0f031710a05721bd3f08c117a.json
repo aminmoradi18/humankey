@@ -1,0 +1,1 @@
+{"data":[["vendor_in_gleif","vendors","Custom Data Quality","13","12","1"]],"headers":["name","table","type","total_record","valid_record","invalid_record"],"sql":"RUN DQ vendor_in_gleif TABLE lightning.metastore.humankey.northwind.vendors"}

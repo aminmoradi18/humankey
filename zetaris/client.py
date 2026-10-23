@@ -46,7 +46,11 @@ def classify(sql):
     s = re.sub(r"--[^\n]*|/\*.*?\*/", " ", sql, flags=re.S).strip().rstrip(";")
     if not s or ";" in s:
         return "write"
-    verb = s.split(None, 1)[0].upper()
+    words = s.split(None, 2)
+    verb = words[0].upper()
+    second = words[1].upper() if len(words) > 1 else ""
+    if (verb, second) in (("RUN", "DQ"), ("LOAD", "USL")):
+        return "read"  # data-quality checks and model reads change nothing
     return "read" if verb in READ_VERBS else "write"
 
 
@@ -160,7 +164,7 @@ class ZetarisClient:
 
     def setup(self, sql):
         """Setup DDL run by scripts/, outside agent traffic and the write guard."""
-        return self._run_live(normalize(sql), 50)
+        return self._run_live(sql.strip().rstrip(";"), 50)  # keep newlines: COMPILE USL needs them
 
     def _receipt(self, text, headers, data, status, purpose, agent, error=None):
         ran_at = now_iso()
@@ -170,7 +174,7 @@ class ZetarisClient:
             # claim's citation stays valid across runs (and recorded runs replay exactly)
             "receipt_id": "rcpt_" + sha(text + "|" + status + "|" + result_sha + "|" + (error or ""))[:12],
             "sql": text,
-            "sources": sorted(set(re.findall(r"\b((?:northwind_erp|gleif)\.\w+)", text, re.I))),
+            "sources": sorted(set(re.findall(r"\b((?:lightning\.metastore\.humankey\.northwind|northwind_erp|gleif)\.\w+)", text, re.I))),
             "row_count": len(data),
             "ran_at": ran_at,
             "result_sha256": result_sha,

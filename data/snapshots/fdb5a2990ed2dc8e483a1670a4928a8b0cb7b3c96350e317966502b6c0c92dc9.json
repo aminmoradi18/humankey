@@ -1,0 +1,1 @@
+{"data":[["vendor_lei_current","vendors","Custom Data Quality","13","9","4"]],"headers":["name","table","type","total_record","valid_record","invalid_record"],"sql":"RUN DQ vendor_lei_current TABLE lightning.metastore.humankey.northwind.vendors"}

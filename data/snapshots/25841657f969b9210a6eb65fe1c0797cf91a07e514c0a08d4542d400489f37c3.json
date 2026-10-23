@@ -1,1 +1,0 @@
-{"data":[["sealedair.com","sealedair.com"]],"headers":["from_domain","email_domain"],"sql":"SELECT e.from_domain, v.email_domain FROM northwind_erp.invoices i JOIN northwind_erp.vendors v ON v.vendor_id = i.vendor_id LEFT JOIN northwind_erp.emails e ON e.email_id = i.email_id WHERE i.invoice_id = 'INV0015'"}

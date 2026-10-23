@@ -1,0 +1,1 @@
+{"data":[["invoice_amount_positive","invoices","Custom Data Quality","17","17","0"]],"headers":["name","table","type","total_record","valid_record","invalid_record"],"sql":"RUN DQ invoice_amount_positive TABLE lightning.metastore.humankey.northwind.invoices"}

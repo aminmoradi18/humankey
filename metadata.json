@@ -4,19 +4,49 @@
   "data_layer": {
     "zetaris": {
       "sources": [
-        {"name": "northwind_erp", "kind": "JDBC datasource (PostgreSQL)", "used_by": "agent/tools.py"},
-        {"name": "gleif.lei_entities", "kind": "Lightning REST table + SchemaStore view (GLEIF LEI API)", "used_by": "agent/tools.py:t_vendor_registry"}
+        {
+          "name": "northwind_erp",
+          "kind": "JDBC datasource (PostgreSQL)",
+          "used_by": "agent/tools.py"
+        },
+        {
+          "name": "gleif.lei_entities",
+          "kind": "Lightning REST table + SchemaStore view (GLEIF LEI API)",
+          "used_by": "agent/tools.py:t_vendor_registry"
+        }
       ],
       "setup": "scripts/register_zetaris_sources.sql"
     }
   },
   "meterless": {
     "engines": [
-      {"engine": "World Model", "code": "meterless/world-model/src", "mounted_at": "meterless/server.ts /observe /decision /context", "feature": "shared vendor state between agents; planner context", "test": "npm run conformance:world (8/8)"},
-      {"engine": "H-MEM", "code": "meterless/hmem/src", "mounted_at": "meterless/server.ts /memory/*", "feature": "human answers remembered per vendor and check; graded by later answers", "test": "npm run conformance:hmem (13/13); tests/test_memory.py"}
+      {
+        "engine": "World Model",
+        "code": "meterless/world-model/src",
+        "mounted_at": "meterless/server.ts /observe /decision /context",
+        "feature": "shared vendor state between agents; planner context",
+        "test": "npm run conformance:world (8/8)"
+      },
+      {
+        "engine": "H-MEM",
+        "code": "meterless/hmem/src",
+        "mounted_at": "meterless/server.ts /memory/*",
+        "feature": "human answers remembered per vendor and check; graded by later answers",
+        "test": "npm run conformance:hmem (13/13); tests/test_memory.py"
+      }
     ],
-    "runtime_provider": {"code": "llm/provider.py", "contract": "Meterless Runtime provider contract v4", "select": "LLM_PROVIDER=meterless"}
+    "runtime_provider": {
+      "code": "llm/provider.py",
+      "contract": "Meterless Runtime provider contract v4",
+      "select": "LLM_PROVIDER=meterless"
+    }
   },
-  "nvidia": {"models": "Nemotron (see logs/llm.jsonl for the model of every request)", "roles": ["planner", "investigator", "guard"]},
-  "coding_tool": "Claude Code"
+  "nvidia": {
+    "models": "Nemotron (see logs/llm.jsonl for the model of every request)",
+    "roles": [
+      "planner",
+      "investigator",
+      "guard"
+    ]
+  }
 }

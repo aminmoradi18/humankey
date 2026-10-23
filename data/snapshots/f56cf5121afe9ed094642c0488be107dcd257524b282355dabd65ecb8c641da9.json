@@ -1,0 +1,1 @@
+{"data":[["bank_change_verified","bank_change_requests","Custom Data Quality","2","1","1"]],"headers":["name","table","type","total_record","valid_record","invalid_record"],"sql":"RUN DQ bank_change_verified TABLE lightning.metastore.humankey.northwind.bank_change_requests"}

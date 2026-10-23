@@ -1,0 +1,1 @@
+{"data":[["vendor_id","invoices","Foreign Key Constraint","17","16","1"]],"headers":["name","table","type","total_record","valid_record","invalid_record"],"sql":"RUN DQ vendor_id TABLE lightning.metastore.humankey.northwind.invoices"}
