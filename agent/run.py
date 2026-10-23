@@ -3,6 +3,7 @@
 Usage: python3 -m agent.run [INV0008 ...]      (no ids: every invoice in Zetaris)
 """
 import json
+from pathlib import Path
 import os
 import sys
 from concurrent.futures import ThreadPoolExecutor
@@ -15,7 +16,7 @@ from common.jsonl import canonical, now_iso, read
 from llm.provider import LLM
 from zetaris.client import ZetarisClient
 
-STATE = ROOT / "gate" / "state"
+STATE = Path(os.environ.get("HUMANKEY_STATE", ROOT / "gate" / "state"))
 
 
 def receipts_for(findings):

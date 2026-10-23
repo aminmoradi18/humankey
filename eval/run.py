@@ -6,13 +6,15 @@ without the human key). A clean invoice is a "false alarm" when it is BLOCKED.
 """
 import csv
 import json
+import os
+from pathlib import Path
 from collections import Counter
 
 from common.env import ROOT
 from common.jsonl import read
 
 LABELS = ROOT / "data" / "labels.csv"
-PROPOSALS = ROOT / "gate" / "state" / "proposals.json"
+PROPOSALS = Path(os.environ.get("HUMANKEY_STATE", ROOT / "gate" / "state")) / "proposals.json"
 
 
 def main():

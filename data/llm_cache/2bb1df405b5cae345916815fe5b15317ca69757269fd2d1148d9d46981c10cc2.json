@@ -1,0 +1,1 @@
+{"model":"nemotron-mini","text":" {\n  \"claims\": [\n    {\n      \"text\": \"...\",\n      \"supports\": \"risk_up|risk_down\",\n      \"receipt_ids\": [\"rcpt_...\"]\n    }\n  ],\n  \"proposal\": \"clear\",\n  \"explanation\": \"This invoice is clear and does not require escalation.\"\n}"}

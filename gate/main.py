@@ -13,6 +13,8 @@ Usage:
   python3 -m gate.main forge INV0008            try to approve without the device (must be refused)
 """
 import json
+import os
+from pathlib import Path
 import sys
 import time
 import uuid
@@ -23,7 +25,7 @@ from common.jsonl import append, canonical, read
 from gate.crypto import contract_ok, contract_secret, decision_message, sha256, sign_contract, verify_ed25519
 from gate.devices import EmulatorDevice, open_device
 
-STATE = ROOT / "gate" / "state"
+STATE = Path(os.environ.get("HUMANKEY_STATE", ROOT / "gate" / "state"))
 TTL_S = 300
 POLICY_VERSION = "humankey-policy-1"
 

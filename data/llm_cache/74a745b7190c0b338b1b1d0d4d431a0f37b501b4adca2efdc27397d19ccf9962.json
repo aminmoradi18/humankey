@@ -1,1 +1,1 @@
-{"model":"nemotron-mini","text":" {\"checks\": [\"invoice_header\", \"vendor_registry\", \"bank_account\"], \"reason\": \"This payment needs checks for the invoice header, vendor registry, and bank account to ensure it is legitimate.\"}"}
+{"model":"nemotron-mini","text":" {\"checks\": [\"invoice_header\", \"vendor_registry\", \"bank_account\"], \"reason\": \"This payment needs checks on invoice header, vendor registry, and bank account to ensure it's legitimate.\"}"}

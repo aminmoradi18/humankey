@@ -27,17 +27,24 @@ case "$MODE" in
     ;;
   sample|live)
     if [ "$MODE" = sample ]; then
-      export SAMPLE_MODE=true
-      export HUMANKEY_LOGS="$PWD/logs/sample"
-      export WORLD_PORT=8712
-      export WORLD_DIR="$PWD/logs/sample/world" HMEM_DIR="$PWD/logs/sample/hmem"
-      rm -rf logs/sample
+      # Everything for the replay lives in logs/sample, so a judge's run starts clean every time
+      # and never touches live state: own logs, gate state, emulator key and memory, World Model.
+      export SAMPLE_MODE=true DEVICE=emulator
+      S="$PWD/logs/sample"
+      export HUMANKEY_LOGS="$S" HUMANKEY_STATE="$S/gate" HUMANKEY_EMU_DIR="$S/emulator"
+      export WORLD_PORT=8712 WORLD_DIR="$S/world" HMEM_DIR="$S/hmem"
+      rm -rf "$S"
     fi
     python3 -m gate.main enroll-emulator >/dev/null
+    if [ "$MODE" = sample ]; then
+      # The emulator's own account memory, from payment history (auto-confirmed in sample mode).
+      # With the hardware key this is a one-time step: python3 -m gate.main import-accounts
+      DEVICE_SCRIPT=approve python3 -m gate.main import-accounts >/dev/null
+    fi
     python3 -m agent.run
     python3 -m eval.run | sed -n '1,8p'
     echo
-    echo "Web view: http://127.0.0.1:8700   (Ctrl+C to stop)"
+    echo "Web view: http://127.0.0.1:${WEB_PORT:-8700}   (Ctrl+C to stop)"
     python3 -m web.server
     ;;
   *) echo "usage: ./run.sh [sample|live|setup|test]"; exit 2 ;;

@@ -1,0 +1,1 @@
+{"model":"nemotron-mini","text":" [\n  {\n    \"text\": \"The invoice INV0016 is for goods delivered under PO, net 30. The vendor, Aktiebolaget SKF, is pre-approved by the CFO.\",\n    \"supports\": [\"risk_up\", \"risk_down\"],\n    \"receipt_ids\": [\"rcpt_783802521056\", \"rcpt_781c68bca4ef\"]\n  }\n]"}

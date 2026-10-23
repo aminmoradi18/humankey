@@ -164,13 +164,16 @@ class ZetarisClient:
 
     def _receipt(self, text, headers, data, status, purpose, agent, error=None):
         ran_at = now_iso()
+        result_sha = sha(canonical({"h": headers, "d": data}))
         r = {
-            "receipt_id": "rcpt_" + sha(text + ran_at + str(uuid.uuid4()))[:12],
+            # content-addressed: the same query with the same result always gets the same id, so a
+            # claim's citation stays valid across runs (and recorded runs replay exactly)
+            "receipt_id": "rcpt_" + sha(text + "|" + status + "|" + result_sha + "|" + (error or ""))[:12],
             "sql": text,
             "sources": sorted(set(re.findall(r"\b((?:northwind_erp|gleif)\.\w+)", text, re.I))),
             "row_count": len(data),
             "ran_at": ran_at,
-            "result_sha256": sha(canonical({"h": headers, "d": data})),
+            "result_sha256": result_sha,
             "status": status,
             "mode": self.mode,
             "purpose": purpose,
