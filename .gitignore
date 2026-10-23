@@ -8,3 +8,4 @@ gate/state/*.json
 logs/*.jsonl
 logs/*.jsonl
 data/snapshots/
+data/llm_cache/
