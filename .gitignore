@@ -6,3 +6,5 @@ device_emu/key
 gate/state/*.jsonl
 gate/state/*.json
 logs/*.jsonl
+logs/*.jsonl
+data/snapshots/
