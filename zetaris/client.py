@@ -19,7 +19,7 @@ from pathlib import Path
 from common.env import ROOT, flag, load_env
 from common.jsonl import append, canonical, now_iso
 
-SNAPSHOTS = ROOT / "data" / "snapshots"
+SNAPSHOTS = Path(os.environ.get("HUMANKEY_SNAPSHOTS", ROOT / "data" / "snapshots"))
 READ_VERBS = ("SELECT", "WITH", "SHOW", "DESCRIBE", "DESC", "LIST", "PREVIEW", "EXPLAIN")
 NEVER = re.compile(r"\bINVALIDATE\s+CACHE\b", re.I)
 SAFE_ID = re.compile(r"^[A-Za-z0-9_.\-@ ]{0,80}$")

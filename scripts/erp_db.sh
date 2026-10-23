@@ -18,6 +18,6 @@ until docker exec "$NAME" psql -U northwind -d erp -tAc "select 1" >/dev/null 2>
 docker exec -i "$NAME" psql -q -v ON_ERROR_STOP=1 -U northwind -d erp < scripts/erp_schema.sql
 for t in vendors purchase_orders payments emails bank_change_requests invoices; do
   docker exec -i "$NAME" psql -q -v ON_ERROR_STOP=1 -U northwind -d erp \
-    -c "\\copy $t FROM STDIN WITH (FORMAT csv, HEADER true)" < "data/out/$t.csv"
+    -c "\\copy $t FROM STDIN WITH (FORMAT csv, HEADER true)" < "${DATA_OUT:-data/out}/$t.csv"
   printf '%-22s %s rows\n' "$t" "$(docker exec "$NAME" psql -tA -U northwind -d erp -c "select count(*) from $t")"
 done

@@ -19,11 +19,12 @@ import re
 import time
 import urllib.error
 import urllib.request
+from pathlib import Path
 
 from common.env import ROOT, flag, load_env
 from common.jsonl import append, canonical
 
-CACHE = ROOT / "data" / "llm_cache"
+CACHE = Path(os.environ.get("HUMANKEY_LLM_CACHE", ROOT / "data" / "llm_cache"))
 APP_ID = "humankey"
 
 # Free Nemotron routes that answered on 2026-10-22; tried in order after LLM_MODEL.

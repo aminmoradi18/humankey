@@ -43,6 +43,7 @@ def investigate(invoice_id, z, llm, world=None, run_id="run", max_revisions=1):
         event("injection", invoice_id, agent="guard", flags=flags)
 
     draft = inv.write(invoice_id, findings, memo)
+    first_draft = draft["proposal"]  # what an agent alone would have done (benchmark baseline)
     event("draft", invoice_id, agent="investigator", proposal=draft["proposal"], claims=len(draft["claims"]))
     verdict, reasons, integrity = critic.review(draft, findings, receipts_for(findings), flags)
     event("critic", invoice_id, agent="critic", verdict=verdict, reasons=reasons, integrity=integrity["verdict"])
@@ -72,7 +73,7 @@ def investigate(invoice_id, z, llm, world=None, run_id="run", max_revisions=1):
         "claims": draft["claims"], "explanation": draft.get("explanation", ""),
         "findings": findings, "injection_flags": flags, "integrity": integrity,
         "critic": {"verdict": verdict, "reasons": reasons, "revisions": revisions},
-        "plan": plan, "key_text": key_text, "memory": remembered,
+        "plan": plan, "key_text": key_text, "memory": remembered, "first_draft": first_draft,
     }
     event("decision", invoice_id, agent="risk", **decision, key_text=key_text)
     if world and vendor:

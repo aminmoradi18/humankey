@@ -96,7 +96,9 @@ def write(name, rows, path=None):
     print(f"{name:22} {len(rows):4} rows")
 
 
-def main(seed):
+def main(seed, out=None):
+    global OUT
+    OUT = Path(out) if out else HERE / "out"
     rng = random.Random(seed)
     OUT.mkdir(parents=True, exist_ok=True)
     vendors, ibans, typical = [], {}, {}
@@ -138,6 +140,12 @@ def main(seed):
     emails, changes, invoices, labels = [], [], [], []
     vmap = {v["vendor_id"]: v for v in vendors}
     plan = list(PLAN)
+    if seed != 7:
+        # Benchmark companies: the ordinary vendors (0-9) trade places, so each fraud lands on a
+        # different vendor with different amounts; the special vendors keep their roles.
+        perm = list(range(10))
+        rng.shuffle(perm)
+        plan = [(perm[vi] if vi is not None and vi < 10 else vi, kind) for vi, kind in plan]
     rng.shuffle(plan)
     for n, (vi, kind) in enumerate(plan, 1):
         if vi is None:  # orphan: a vendor id that is not in the vendor master
@@ -206,10 +214,12 @@ def main(seed):
     write("emails", emails)
     write("bank_change_requests", changes)
     write("invoices", invoices)
-    write("labels", labels, HERE / "labels.csv")
+    write("labels", labels, (OUT / "labels.csv") if out else HERE / "labels.csv")
 
 
 if __name__ == "__main__":
     ap = argparse.ArgumentParser()
     ap.add_argument("--seed", type=int, default=7)
-    main(ap.parse_args().seed)
+    ap.add_argument("--out", help="output folder (default data/out; labels then go next to the CSVs)")
+    a = ap.parse_args()
+    main(a.seed, a.out)
