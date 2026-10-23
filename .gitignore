@@ -9,3 +9,7 @@ logs/*.jsonl
 logs/*.jsonl
 data/snapshots/
 data/llm_cache/
+node_modules/
+data/.world/
+device_emu/counter
+logs/*.log
