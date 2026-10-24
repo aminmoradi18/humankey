@@ -107,6 +107,7 @@ details.rc summary code{color:var(--ink2)}
 pre{white-space:pre-wrap;word-break:break-word;background:var(--bg2);border:1px solid var(--line);padding:10px 12px;border-radius:8px;margin:8px 0 6px}
 .rmeta{display:flex;flex-wrap:wrap;gap:6px}
 .rmeta span{font:11px var(--mono);color:var(--muted);background:var(--panel2);border:1px solid var(--line);padding:2px 6px;border-radius:5px;word-break:break-all}
+.rmeta span.fresh{color:var(--ok, #12805c);border-color:currentColor}
 
 .grid2{display:grid;grid-template-columns:minmax(0,1fr) minmax(0,1fr);gap:16px}
 @media (max-width:980px){.grid2{grid-template-columns:minmax(0,1fr)}}
@@ -369,7 +370,7 @@ function render() {
     : x.route === "AWAITING_KEY" ? "A human must approve this on the key before any money moves." : "Auto-cleared by the agents; the gate still logs the release.";
   const receipt = (id) => { const r = rc[id]; if (!r) return "";
     return `<details class="rc" data-k="${esc(id)}"><summary>receipt <code>${esc(id)}</code> · ${esc(r.row_count)} rows · ${esc(r.status)} · ${esc((r.sources || []).join(", "))}</summary>
-      <pre>${esc(r.sql)}</pre><div class="rmeta"><span>sha256 ${esc(String(r.result_sha256 || "").slice(0, 16))}…</span><span>${esc(r.mode)}</span><span>${esc(r.ran_at)}</span><span>${esc((r.sources || []).length)} source(s)</span></div></details>`; };
+      <pre>${esc(r.sql)}</pre><div class="rmeta"><span>sha256 ${esc(String(r.result_sha256 || "").slice(0, 16))}…</span><span class="${r.freshness === "live" ? "fresh" : ""}">${r.freshness === "live" ? "read live" : r.freshness === "recorded" ? "recorded replay" : esc(r.mode)}${r.rest_backed ? " · public registry API" : ""}</span><span>${esc(r.ran_at)}</span><span>${esc((r.sources || []).length)} source(s)</span></div></details>`; };
   const longWhy = String(x.explanation || "").length > 480;
   const longPlan = String(plan.reason || "").length > 180;
   $("detail").innerHTML = `

@@ -180,6 +180,10 @@ class ZetarisClient:
             "result_sha256": result_sha,
             "status": status,
             "mode": self.mode,
+            # Freshness: "live" was read from the source just now (REST tables re-call their API on every
+            # query, and HumanKey never caches them); "recorded" is a replay from a saved snapshot.
+            "freshness": "live" if self.mode == "live" else "recorded",
+            "rest_backed": bool(re.search(r"\bgleif\b|northwind\.vendors\b", text, re.I)),
             "purpose": purpose,
             "agent": agent,
         }

@@ -187,11 +187,16 @@ class Critic:
         for r in receipts:
             if r["status"] in ("ok", "empty") and r["sql"].upper().startswith("SELECT"):
                 _, r2 = self.z.query(r["sql"], purpose="critic re-run", agent=self.name)
-                rerun.append({"receipt_id": r["receipt_id"], "same_hash": r2["result_sha256"] == r["result_sha256"]})
+                rerun.append({"receipt_id": r["receipt_id"], "same_hash": r2["result_sha256"] == r["result_sha256"],
+                              "freshness": r2.get("freshness", "live")})
         failed = [r["receipt_id"] for r in receipts if r["status"] in ("error", "not_run")]
         drift = [x["receipt_id"] for x in rerun if not x["same_hash"]]
         if drift:
             reasons.append(f"query results changed on re-run: {drift}")
+        # In a live run the re-check must hit the source again; a recorded answer proves nothing new.
+        stale = [x["receipt_id"] for x in rerun if getattr(self.z, "mode", "") == "live" and x["freshness"] != "live"]
+        if stale:
+            reasons.append(f"re-run was not read live: {stale}")
         integrity = {"rerun": rerun, "failed_receipts": failed,
                      "verdict": "not_run" if not rerun else ("degraded" if failed or drift else "pass")}
         return ("revise" if reasons else "accept"), reasons, integrity

@@ -15,6 +15,7 @@ import { SafeAreaProvider, useSafeAreaInsets } from 'react-native-safe-area-cont
 
 import { DEFAULT_SERVER, Devices, Item, Queue, decide, devices, getServer, pair, queue, release, setServer } from './src/api';
 import { Identity, checkContract, identity, signDecision } from './src/key';
+import { announce, message, setupNotifications } from './src/notify';
 import { getItem, setItem } from './src/store';
 
 // Telegram's night palette: blue for "where am I" and for actions, colour only for meaning.
@@ -67,9 +68,22 @@ function Main() {
     return () => clearTimeout(t);
   }, []);
 
+  // Ids already seen, so only payments that arrive while the app runs raise a notification.
+  const seen = useRef<Set<string> | null>(null);
+  const [banner, setBanner] = useState<Item | null>(null);
+  useEffect(() => { if (paired) setupNotifications(); }, [paired]);
+
   const refresh = useCallback(async () => {
     try {
       const [nq, nd] = await Promise.all([queue(), devices()]);
+      const waiting = nq.items.filter((i) => !i.done);
+      const fresh = seen.current ? waiting.filter((i) => !seen.current!.has(i.invoice_id)) : [];
+      fresh.forEach(announce);
+      if (fresh.length) {
+        setBanner(fresh[0]);
+        Haptics.notificationAsync(Haptics.NotificationFeedbackType.Warning);
+      }
+      seen.current = new Set(waiting.map((i) => i.invoice_id));
       setQ(nq);
       setDevs(nd);
       setErr('');
@@ -118,6 +132,7 @@ function Main() {
               : tab === 'phone' ? <PhoneTab items={items} mine={mine} onOpen={setOpen} refresh={refresh} />
               : <KeyTab items={items} pending={key} devs={devs} onOpen={setOpen} refresh={refresh} />}
           </View>
+          {banner ? <Banner it={banner} top={insets.top} onOpen={() => { setOpen(banner.invoice_id); setBanner(null); }} onDone={() => setBanner(null)} /> : null}
           <TabBar tab={tab} onTab={(t) => { Haptics.selectionAsync(); setTab(t); }}
             badges={{ profile: 0, phone: mine.length, key: key.length, settings: 0 }} bottom={insets.bottom} />
         </>
@@ -139,6 +154,32 @@ function Launch() {
       <Animated.Text style={{ color: C.dim, fontSize: 14, marginTop: 4, opacity: a }}>The agent explains why. You hold the key.</Animated.Text>
       <ActivityIndicator color={C.blue} style={{ position: 'absolute', bottom: 70 }} />
     </View>
+  );
+}
+
+// In-app notification: slides down from the top, tap to open, gone after a few seconds.
+function Banner({ it, top, onOpen, onDone }: { it: Item; top: number; onOpen: () => void; onDone: () => void }) {
+  const y = useRef(new Animated.Value(-140)).current;
+  const m = message(it);
+  const phone = it.tier === 'phone';
+  useEffect(() => {
+    Animated.spring(y, { toValue: 0, useNativeDriver: true, friction: 8 }).start();
+    const t = setTimeout(() => Animated.timing(y, { toValue: -160, duration: 250, useNativeDriver: true }).start(onDone), 5000);
+    return () => clearTimeout(t);
+  }, [it.invoice_id]);
+  return (
+    <Animated.View style={[s.banner, { top: top + 8, transform: [{ translateY: y }] }]}>
+      <Pressable onPress={onOpen} style={{ flexDirection: 'row', alignItems: 'center', gap: 12 }}>
+        <View style={[s.avatar, { width: 40, height: 40, backgroundColor: phone ? C.blue : C.amber }]}>
+          <Ionicons name={phone ? 'finger-print' : 'key'} size={20} color="#fff" />
+        </View>
+        <View style={{ flex: 1 }}>
+          <Text style={{ color: C.text, fontSize: 15, fontWeight: '700' }} numberOfLines={1}>{m.title}</Text>
+          <Text style={{ color: C.dim, fontSize: 13, marginTop: 1 }} numberOfLines={1}>{m.body}</Text>
+        </View>
+        <Text style={{ color: C.dim, fontSize: 12 }}>now</Text>
+      </Pressable>
+    </Animated.View>
   );
 }
 
@@ -640,6 +681,9 @@ const s = StyleSheet.create({
   input: { color: C.text, fontSize: 16, borderRadius: 12, padding: 14, marginTop: 8, backgroundColor: C.bg },
   btn: { borderRadius: 14, paddingVertical: 15, alignItems: 'center', marginTop: 18 },
   btnText: { color: '#fff', fontSize: 17, fontWeight: '700' },
+  banner: { position: 'absolute', left: 12, right: 12, backgroundColor: '#1C2733', borderRadius: 20, padding: 12,
+    borderWidth: StyleSheet.hairlineWidth, borderColor: 'rgba(255,255,255,0.14)', elevation: 12,
+    shadowColor: '#000', shadowOpacity: 0.5, shadowRadius: 18, shadowOffset: { width: 0, height: 8 } },
   tabWrap: { position: 'absolute', left: 30, right: 30 },
   tabbar: { flexDirection: 'row', padding: 3, borderRadius: 26, overflow: 'hidden', backgroundColor: 'rgba(28,39,51,0.94)',
     borderWidth: StyleSheet.hairlineWidth, borderColor: 'rgba(255,255,255,0.14)', elevation: 10,
