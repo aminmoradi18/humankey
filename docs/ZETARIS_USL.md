@@ -87,6 +87,10 @@ the controls that matter; switching to the agent user is a credentials change.
 
 ## Reflection
 
+**First impression.** I had not used a platform like this before. I had a feeling something like it
+should exist, because the gap was there in the market. Installing the local edition was easy and the
+guide was enough.
+
 **How it saved time.** Without Zetaris, each check would need its own connector code for Postgres and
 for the GLEIF API, plus our own join, retry and caching logic. With it, the GLEIF API is a table, the
 ERP is a table, and the registry check is one `SELECT` on the USL's `vendors`. In numbers:
@@ -104,7 +108,16 @@ ERP says what we expect, the registry says who the company really is, the paymen
 money actually went. A semantic layer lets an auditor and an agent ask the same question in the same
 words, and the DQ results are a standing control that does not depend on the agent remembering to check.
 
+**Where I would use it.** Mobile apps almost always keep their data in several places. Apps that handle
+money (invoices, wallets, bookings) have it hardest: orders live in the app's own database, payments in
+Google Play or a payment gateway, and the real money in the bank statement. The important question always
+sits between them: which payment does not match its order? In my own projects I need exactly this kind of
+data integration, and it is what the agents in this project do, with evidence.
+
 **What we would improve** (from building this, offered constructively):
+- The one I hit myself: I created a non-administrator user for the agents and granted it read access to
+  the USL. Zetaris accepted the grant and lists it, but the user still cannot read the USL (section 5).
+  Once that works, agents can run on a read-only identity, as your permissions guide recommends.
 - `SHOW DQ INVALID RECORD` is the most useful command for agents. A form that returns only the keys
   (or a count by key) would make it cheap to call on every run.
 - `COMPILE USL` needs each `CREATE TABLE` on its own line; a client that normalises whitespace gets
@@ -118,8 +131,5 @@ words, and the DQ results are a standing control that does not depend on the age
   `CACHE TABLE`) would make federated checks with public APIs fast without serving stale registry data
   forever. We left caching off in HumanKey: the critic re-runs every query to check it, and a cached
   re-run would match trivially.
-- A non-administrator user granted `SELECT` on a USL namespace or table is still refused ("does not have
-  access to USL"), while the same grants on a datasource work (section 5). Making USL grants effective would
-  let agents read the semantic layer with a read-only identity, as the permissions guide recommends.
 - `SHOW TABLES` being disabled in favour of `SHOW NAMESPACES OR TABLES IN …` surprised our first
   script; a hint in the error message pointing to the new form would save time.

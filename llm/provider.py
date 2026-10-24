@@ -139,7 +139,15 @@ class LLM:
         for model in self.models:
             t0 = time.time()
             try:
-                text, used, upstream, usage, receipt = self._post(model, messages, max_tokens, temperature)
+                try:
+                    text, used, upstream, usage, receipt = self._post(model, messages, max_tokens, temperature)
+                except LLMError as e:
+                    # Reasoning models (hosted Nemotron) can spend the whole budget thinking and return no
+                    # answer, and a long link can drop once. Retry once, with room to think if it was empty.
+                    if not (str(e) == "empty answer" or str(e).startswith("transport")):
+                        raise
+                    more = max(max_tokens * 3, 3000) if str(e) == "empty answer" else max_tokens
+                    text, used, upstream, usage, receipt = self._post(model, messages, more, temperature)
             except LLMError as e:
                 errors.append(f"{model}: {e}")
                 append("llm", {"agent": agent, "purpose": purpose, "provider": self.provider, "model": model,

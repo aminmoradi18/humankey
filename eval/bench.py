@@ -135,7 +135,13 @@ def main():
     ap.add_argument("--seeds", default="101-110")
     ap.add_argument("--keep", action="store_true", help="keep per-seed folders in logs/bench")
     ap.add_argument("--reuse", action="store_true", help="score seeds already run with --keep instead of rerunning")
+    ap.add_argument("--name", default="", help="write eval/BENCHMARK_<name>.md and logs/bench_<name>/ instead")
     args = ap.parse_args()
+    global WORK
+    if args.name:
+        WORK = ROOT / "logs" / f"bench_{args.name}"
+    report = ROOT / "eval" / (f"BENCHMARK_{args.name}.md" if args.name else "BENCHMARK.md")
+    summary = ROOT / "eval" / (f"benchmark_{args.name}.json" if args.name else "benchmark.json")
     seeds = parse_seeds(args.seeds)
     env_base = dict(os.environ)
     all_rows, times = [], {}
@@ -144,7 +150,7 @@ def main():
             rows, secs = run_seed(seed, i, env_base, args.reuse)
             all_rows += rows
             if secs is None:
-                secs = json.loads((ROOT / "eval" / "benchmark.json").read_text())["seconds"].get(str(seed), 0)
+                secs = json.loads(summary.read_text())["seconds"].get(str(seed), 0)
             times[seed] = secs
             s = summarize(rows)
             print(f"seed {seed}: {secs}s  frauds paid w/o human A={s['A']['frauds paid with no human']} "
@@ -158,7 +164,7 @@ def main():
         if p.exists():
             llm += [json.loads(x) for x in p.read_text().splitlines() if x.strip()]
     models = sorted({x["model"] for x in llm if x.get("ok")})
-    (ROOT / "eval" / "benchmark.json").write_text(json.dumps({"seeds": seeds, "summary": total, "rows": all_rows,
+    summary.write_text(json.dumps({"seeds": seeds, "summary": total, "rows": all_rows,
                                                               "seconds": times, "models": models}, indent=1))
     keys = list(total["A"].keys())
     md = ["# Benchmark", "",
@@ -177,7 +183,7 @@ def main():
     for case, outs in sorted(by.items()):
         cnt = {o: outs.count(o) for o in sorted(set(outs))}
         md.append(f"| {case} | {len(outs)} | " + ", ".join(f"{o}: {n}" for o, n in cnt.items()) + " |")
-    (ROOT / "eval" / "BENCHMARK.md").write_text("\n".join(md) + "\n")
+    report.write_text("\n".join(md) + "\n")
     print("\n".join(md))
     if not args.keep:
         shutil.rmtree(WORK, ignore_errors=True)

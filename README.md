@@ -151,6 +151,13 @@ logs of the seven benchmark companies are committed in [`evidence/llm/`](evidenc
 answered by `nemotron-mini`. Earlier in development we used hosted Nemotron through OpenRouter until its
 free quota ran out.
 
+**Five Nemotron sizes, same frauds** ([`eval/MODELS.md`](eval/MODELS.md)). On two held-out companies we ran
+every agent on five Nemotron models, from the 4B on the laptop to the hosted 550B Ultra. With the agent
+alone, each model paid 4 to 11 of the 18 frauds, and the biggest was not the safest. Inside HumanKey every
+model paid none, and the human's workload was almost the same. Safety comes from the design, not from model
+size, so the right choice is the smallest Nemotron that keeps the workload acceptable: here, the free and
+private 4B model on the laptop's own GPU.
+
 ## Honest limits
 
 - Invoices, accounts and e-mails are synthetic. The vendors are real companies with their real LEIs; the
