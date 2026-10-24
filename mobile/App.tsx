@@ -226,10 +226,15 @@ function Detail({ item, onBack, refresh }: { item: Item; onBack: () => void; ref
     working.current = true;
     try {
       if (d === 'approve' && Platform.OS !== 'web') {
+        if ((await LocalAuthentication.getEnrolledLevelAsync()) === LocalAuthentication.SecurityLevel.NONE) {
+          setState('Set up a fingerprint or screen lock on this phone first. Approving needs it.');
+          Haptics.notificationAsync(Haptics.NotificationFeedbackType.Error);
+          return;
+        }
         const auth = await LocalAuthentication.authenticateAsync({
           promptMessage: `Approve ${money(item.amount)}`, promptSubtitle: `${item.invoice_id} to ${item.vendor_id}`,
         });
-        if (!auth.success) { setState('Not confirmed'); return; }
+        if (!auth.success) { setState(`Not confirmed (${auth.error ?? 'cancelled'})`); return; }
       }
       setState('Asking the gate for a signed contract…');
       await release(item.invoice_id);
@@ -306,8 +311,9 @@ function Detail({ item, onBack, refresh }: { item: Item; onBack: () => void; ref
             </Text>
           </View>
         ) : null}
-        {state ? <Text style={{ color: C.text, marginHorizontal: 22, marginTop: 14, fontSize: 14 }}>{state}</Text> : null}
+        {!phone && state ? <Text style={{ color: C.text, marginHorizontal: 22, marginTop: 14, fontSize: 14 }}>{state}</Text> : null}
       </ScrollView>
+      {phone && state ? <Text style={s.status}>{state}</Text> : null}
       {phone ? (
         <View style={s.actions}>
           <Pressable onPress={() => act('reject')} style={({ pressed }) => [s.btn, s.ghost, { opacity: pressed ? 0.7 : 1 }]}>
@@ -340,5 +346,6 @@ const s = StyleSheet.create({
   topbar: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', paddingHorizontal: 16, paddingVertical: 10 },
   round: { width: 40, height: 40, borderRadius: 20, backgroundColor: C.card, borderWidth: 1, borderColor: C.line, alignItems: 'center', justifyContent: 'center' },
   actions: { flexDirection: 'row', gap: 10, paddingHorizontal: 16, paddingTop: 10, paddingBottom: 12, borderTopWidth: 1, borderTopColor: C.line, backgroundColor: 'rgba(7,10,18,0.92)' },
+  status: { color: C.text, fontSize: 14, lineHeight: 20, paddingHorizontal: 18, paddingVertical: 10, backgroundColor: 'rgba(108,140,255,0.12)', borderTopWidth: 1, borderTopColor: C.line },
   ghost: { flex: 1, marginTop: 0, backgroundColor: 'transparent', borderWidth: 1, borderColor: C.red },
 });

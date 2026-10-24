@@ -10,26 +10,27 @@ Usage:
   python3 -m gate.main enroll-serial            register the hardware key's public key (USB)
   python3 -m gate.main enroll-phone ID PUB      register a paired phone (normally done by the web pairing code)
   python3 -m gate.main import-accounts          load paid-to accounts into the key's own ledger
+  python3 -m gate.main night                    issue the night contracts for payments waiting for a person
   python3 -m gate.main run [--allow-emulator]   process gate/state/proposals.json
   python3 -m gate.main forge INV0008            try to approve without the device (must be refused)
+  python3 -m gate.main forge-spec INV0008       write the spec's plain {kind: user-confirm} approval (must be refused)
+  python3 -m gate.main tamper INV0011           attack demo: change a waiting payment after its night contract
 """
 import json
 import os
 from pathlib import Path
 import sys
 import time
-import uuid
 
 from agent.agents import event
 from agent.tools import AUTO_LIMIT
 from common.env import ROOT, load_env
 from common.jsonl import append, canonical, read
-from gate.crypto import contract_ok, contract_secret, decision_message, sha256, sign_contract, verify_ed25519
+from gate.crypto import contract_ok, contract_secret, decision_message, sha256, verify_ed25519
+from gate import scout
 from gate.devices import EmulatorDevice, open_device
 
 STATE = Path(os.environ.get("HUMANKEY_STATE", ROOT / "gate" / "state"))
-TTL_S = 300
-POLICY_VERSION = "humankey-policy-2"
 PHONE_LIMIT = 10000.0
 LAST_PAID_SQL = "SELECT vendor_id, iban_hash, iban_last4, paid_at FROM northwind_erp.payments ORDER BY paid_at"
 
@@ -77,22 +78,36 @@ class Gate:
         self.last_paid = last_paid
 
     # -- contract ------------------------------------------------------
-    def issue_contract(self, p, parent=None, tier="hardware"):
-        now = time.time()
-        c = {
-            "contractId": "ctr_" + uuid.uuid4().hex[:12], "parentId": parent, "traceId": p["invoice_id"],
-            "intent": {"primary": "payment.release", "confidence": 1.0,
-                       "parameters": {"invoice_id": p["invoice_id"], "vendor_id": p["vendor_id"],
-                                      "amount": p["amount"]}},
-            "risk": {"level": p["risk"], "flags": [f["check"] for f in p["findings"].values()
-                                                    if f["signal"] in ("risk_up", "unknown")],
-                     "approvals": [tier + "-confirm"]},
-            "scope": {"user": "ap-manager", "surface": "humankey", "capabilities": ["payment.release"]},
-            "issuedAt": int(now), "expiresAt": int(now + TTL_S), "policyPackVersion": POLICY_VERSION,
-            "signedBy": "gate",
-        }
-        c["signature"] = sign_contract(c, self.secret)
+    def issue_contract(self, p, parent=None, tier="hardware", reason=None, approvals=(), stage="morning"):
+        c = scout.issue(p, self.secret, tier, parent=parent, reason=reason, approvals=approvals, stage=stage)
+        append("contracts", {"contract": c}, self.state)  # wrapped: the log adds a timestamp
+        event("contract.issued", p["invoice_id"], agent="gate", contract=c["contractId"], parent=parent,
+              reason=reason, require=c["risk"]["requireApproval"])
         return c
+
+    def contracts(self):
+        return [x["contract"] for x in read("contracts", self.state)]
+
+    def night_contract(self, inv):
+        night = [c for c in self.contracts() if c["traceId"] == inv and c.get("stage") == "night"]
+        return night[-1] if night else None
+
+    def morning(self, p, tier):
+        """Re-plan the night contract for the approval, or refuse if the evidence changed overnight."""
+        night = self.night_contract(p["invoice_id"])
+        if night is None:
+            return self.issue_contract(p, tier=tier), None
+        if not contract_ok(night, self.secret):
+            return None, "night contract signature invalid"
+        if night["evidence"]["digest"] != scout.evidence(p)["digest"]:
+            return None, "evidence changed since the night contract"
+        if scout.expired(night):
+            event("contract.expired", p["invoice_id"], agent="gate", contract=night["contractId"])
+            reason = f"parent expired at {night['expiresAt']}; fresh decision for the approval"
+        else:
+            reason = "approval requested"
+        # the tier is decided now, from today's payment history; the night contract does not fix it
+        return self.issue_contract(p, parent=night["contractId"], tier=tier, reason=reason), None
 
     # -- verification --------------------------------------------------
     def verify(self, contract, text, msg, sent=None):
@@ -104,11 +119,11 @@ class Gate:
             return f"unknown device {dev!r}"
         if dev == "emulator" and not self.allow_emulator:
             return "emulator_not_trusted"
-        if dev.startswith("phone-") and contract["risk"]["approvals"] != ["phone-confirm"]:
+        if dev.startswith("phone-") and contract["risk"]["requireApproval"] != scout.KINDS["phone"]:
             return "a phone cannot approve a hardware-key payment"
         if not contract_ok(contract, self.secret):
             return "contract signature invalid"
-        if time.time() > contract["expiresAt"]:
+        if scout.expired(contract):
             return "contract expired"
         if msg.get("th") != sha256(text):
             return "device showed different text"
@@ -157,7 +172,10 @@ class Gate:
                 self.last_paid = load_last_paid()
             tier = approval_tier(p, self.last_paid)
         device = self.phone if tier == "phone" else self.device
-        contract = self.issue_contract(p, tier=tier)
+        contract, why = self.morning(p, tier)
+        if contract is None:
+            event("contract.refused", inv, agent="gate", reason=why)
+            return f"REFUSED ({why})"
         c_sha = sha256(canonical(contract))
         event("sent_to_device", inv, agent="gate", contract=contract["contractId"], text=p["key_text"], tier=tier)
         w = p.get("witness")
@@ -171,15 +189,26 @@ class Gate:
                   account=msg.get("acct"), decision=msg.get("d"))
         self._save_counter(msg.get("id"), msg.get("counter"))
         if reason is None:
-            approval = {"kind": tier + "-confirm", "device_id": msg["id"], "contract_sha256": c_sha,
+            # The approval goes into a new contract (contracts are immutable once signed), and the
+            # executor checks that one on its own, signature included.
+            record = scout.approval_record(contract, msg, tier)
+            approved = self.issue_contract(p, parent=contract["contractId"], tier=tier,
+                                           reason="approval recorded", approvals=[record], stage="approved")
+            reason = scout.check(approved, self.secret, self.devices, contract)
+        if reason is None:
+            event("contract.verified", inv, agent="gate", contract=approved["contractId"], engine="executor")
+            approval = {"kind": record["kind"], "device_id": msg["id"], "contract_sha256": c_sha,
                         "text_sha256": msg["th"], "decision": "approve", "counter": msg["counter"],
                         "count_witness": {"expected": msg.get("exp"), "checked": msg.get("cov")},
-                        "account_on_key": msg.get("acct"),
-                        "signature": msg["sig"], "contract": contract}
+                        "account_on_key": msg.get("acct"), "signature": msg["sig"],
+                        "chain": [contract.get("parentId"), contract["contractId"], approved["contractId"]],
+                        "contract": approved}
             self.execute(p, f"{'phone' if tier == 'phone' else 'human key'} ({msg['id']})", approval)
             return "EXECUTED"
         state = {"reject": "REJECTED", "timeout": "TIMEOUT"}.get(msg.get("d"), "REFUSED")
         event(state.lower(), inv, agent="gate", reason=reason)
+        if state == "REFUSED":
+            event("contract.refused", inv, agent="gate", contract=contract["contractId"], reason=reason)
         return state if state != "REFUSED" else f"REFUSED ({reason})"
 
 
@@ -232,6 +261,41 @@ def main(argv):
             if only and inv not in only:
                 continue
             print(f"{inv}: {p['route']:12} -> {gate.process(p)}")
+    elif cmd == "night":
+        # Right after the agents finish: one contract per payment that waits for a person, bound to
+        # the evidence the person will see. In the morning it has expired and is re-planned.
+        gate = Gate(allow_emulator=True)
+        n = 0
+        for inv, p in sorted(load_json(STATE / "proposals.json", {}).items()):
+            if p["route"] == "AWAITING_KEY" or (p["route"] == "QUEUED_AUTO" and (p.get("amount") or 0) >= AUTO_LIMIT):
+                gate.issue_contract(p, stage="night")
+                n += 1
+        print(f"night contracts issued: {n} (valid {scout.TTL_S // 60} min; re-planned at approval)")
+    elif cmd == "forge-spec":
+        # Software writes the spec's own approval record into a contract. An executor that only checks
+        # that an approval is present would pay; this one wants the device's signature.
+        gate = Gate(allow_emulator=True)
+        p = load_json(STATE / "proposals.json", {})[argv[1]]
+        parent = gate.issue_contract(p, reason="forged approval test")
+        plain = {"kind": "user-confirm", "at": scout.iso(time.time()), "confirmation": "yes"}
+        forged = gate.issue_contract(p, parent=parent["contractId"], reason="approval recorded", approvals=[plain],
+                                     stage="approved")
+        reason = scout.check(forged, gate.secret, gate.devices, parent)
+        event("forgery_attempt", p["invoice_id"], agent="gate", refused=reason, record="user-confirm")
+        print(f"spec-style approval for {argv[1]}: {'REFUSED: ' + reason if reason else 'ACCEPTED (bug!)'}")
+    elif cmd == "tamper":
+        # Attack demo: something on the laptop edits a waiting payment overnight (amount and screen text),
+        # after the night contract bound its evidence. The morning approval must stop.
+        path = STATE / "proposals.json"
+        props = load_json(path, {})
+        p = props[argv[1]]
+        old, new = p["amount"], round(p["amount"] * 1.9, 2)
+        p["key_text"] = p["key_text"].replace(f"${old:,.0f}", f"${new:,.0f}")
+        p["amount"] = new
+        p["findings"]["invoice_header"]["facts"]["amount"] = new
+        path.write_text(canonical(props))
+        event("tampered", argv[1], agent="attacker", amount_before=old, amount_after=new)
+        print(f"{argv[1]}: amount changed {old:,.2f} -> {new:,.2f} after the night contract")
     elif cmd == "forge":
         # An attacker on the laptop writes an approval without the device's private key.
         gate = Gate(allow_emulator=True)

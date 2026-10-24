@@ -1,4 +1,7 @@
-# HumanKey video script (target 3:50, hard limit 4:00)
+# HumanKey video script (hard limit 4:00)
+
+The video may be built from screenshots and short clips instead of one take. Scenes marked (opt) are the
+first to cut if the edit runs over 4:00; every feature still appears in the screenshot list at the end.
 
 Spoken lines are short. Every spoken line is also burned in as an English subtitle.
 All data on screen comes from `./run.sh sample` (generated company, seed 7). Nothing is edited by hand.
@@ -25,12 +28,14 @@ Before recording:
 | 12 | 2:00 | Web: INV0010 $20,780, every check passed | none | This one looks clean. The vendor master says the account is on file. |
 | 13 | 2:08 | Key: !! KEY WARNING !! NEW ACCOUNT, last OK'd | press NO | But the key remembers the last account I approved. Someone edited the vendor master. |
 | 14 | 2:22 | Web: INV0016 BLOCKED, memo instructs AI | none | The injected memo is caught. It never even reaches the key. |
-| 15 | 2:32 | Terminal: `python3 -m gate.main forge INV0008` → REFUSED | type the command | Now the agent writes its own "yes". The gate refuses it: no device signature. |
-| 16 | 2:45 | Key warning: count 16 of 17 | press I SEE | The key also counts. Seventeen invoices came in, sixteen were checked. It tells me. |
-| 17 | 2:57 | Web: answer on the key, "blanket PO" stored in H-MEM; next run it is recalled | type the note | I explain a soft finding once. Meterless H-MEM remembers it, but never for a bank account. |
-| 18 | 3:08 | BENCHMARK.md table, A / B / C | none | We tested on generated companies with planted frauds. Frauds paid with no human: zero. |
-| 19 | 3:22 | Before / after table, held-out seeds | none | We publish our failures and the fix, measured on companies we did not tune on. |
-| 20 | 3:35 | Key, phone and laptop together | none | Zetaris keeps the receipts. Meterless keeps the memory. A human holds the key. |
+| 15 | 2:32 | Terminal: `python3 -m gate.main forge-spec INV0002` → REFUSED | type the command | Now software writes the Scout approval record itself: "user-confirm, yes". Refused: only the device's signature approves. |
+| 15b | 2:42 | Web timeline for INV0011: night contract, expired, morning re-plan, approved | none | The agents work at night. Their contract expires. In the morning a fresh one is chained to it, and that is what I sign. |
+| 15c | 2:52 | Terminal: `python3 -m gate.main tamper INV0005`, then the web: "evidence changed since the night contract" | type the command, press Send | Someone edits a waiting payment overnight. In the morning the chain stops. Nothing is paid. |
+| 16 | 3:02 | Key warning: count 16 of 17 | press I SEE | The key also counts. Seventeen invoices came in, sixteen were checked. It tells me. |
+| 17 | 3:12 | Web: answer on the key, "blanket PO" stored in H-MEM; next run it is recalled | type the note | I explain a soft finding once. Meterless H-MEM remembers it, but never for a bank account. |
+| 18 (opt) | 3:22 | BENCHMARK.md table, A / B / C | none | We tested on generated companies with planted frauds. Frauds paid with no human: zero. |
+| 19 (opt) | 3:32 | Before / after table, held-out seeds | none | We publish our failures and the fix, measured on companies we did not tune on. |
+| 20 | 3:44 | Key, phone and laptop together | none | Zetaris keeps the receipts. Meterless keeps the memory. A human holds the key. |
 
 ## Feature checklist (every item must appear once)
 
@@ -43,7 +48,9 @@ Before recording:
 - [ ] Ed25519 signature made on the board (scene 11)
 - [ ] Key account memory catches a tampered vendor master (scene 13)
 - [ ] Prompt injection blocked before the key (scene 14)
-- [ ] Forged approval refused (scene 15)
+- [ ] Forged approval refused, in the Meterless Scout contract format (scene 15)
+- [ ] Night contract, morning re-plan, approval record (scene 15b)
+- [ ] Payment changed overnight is stopped (scene 15c)
 - [ ] Count witness on the key (scene 16)
 - [ ] H-MEM memory of a human explanation (scene 17)
 - [ ] Benchmark with baselines, zero frauds paid (scene 18)
@@ -53,8 +60,35 @@ Before recording:
 - [ ] Meterless H-MEM, and what it may never settle (scene 17)
 - [ ] Sponsor tech named again at the close (scene 20)
 
-Left out of the video (in the README): evidence drift downgrading a verdict, a replayed or tampered
-decision being refused, unplugged key failing closed, phone pairing lockout.
+## Screenshot list (slides, README, and spare shots for the edit)
+
+Every scenario we have, with how to produce it. Run on `./run.sh sample` state unless noted.
+
+| # | Scenario | How | What the shot shows |
+|---|---|---|---|
+| S1 | Clean small invoice auto-paid | web view after sample run | INV0017 paid by policy, receipts listed |
+| S2 | Phone approval | phone app, INV0001 | "Clean · phone can approve", then Done |
+| S3 | Phone refused on a big payment | `tests/test_phone.py` output | "a phone cannot approve a hardware-key payment" |
+| S4 | Clean over the limit on the key | key, INV0011 | yellow band CLEAN - OVER LIMIT, green LED |
+| S5 | Risk on the key | key, INV0002 | filled band "! RISK - CHECK !", amber LED |
+| S6 | Tampered vendor master | key, INV0010 | !! KEY WARNING !! NEW ACCOUNT, last OK'd |
+| S7 | Verified bank change | phone app, INV0014 | amber "New account · change verified" |
+| S8 | Prompt injection | web, INV0016 | BLOCKED, memo instructs AI, never sent to the key |
+| S9 | Agent forges a "yes" | `python3 -m gate.main forge INV0002` | REFUSED: device signature invalid |
+| S10 | Spec-style approval | `python3 -m gate.main forge-spec INV0002` | REFUSED: approval present but not device-signed |
+| S11 | Night to morning chain | web timeline | contract.issued, contract.expired, re-plan, contract.verified |
+| S12 | Changed overnight | `python3 -m gate.main tamper INV0005`, then Send | REFUSED: evidence changed since the night contract |
+| S13 | Count witness | key before a decision | 16 of 17 checked, I SEE needed |
+| S14 | Memory of an answer | web, answer note on INV0009, next run | H-MEM recall settles the soft finding |
+| S15 | Wrong memory retired | `tests/test_memory.py` | wrong feedback retires the memory |
+| S16 | Memory never settles hard findings | `tests/test_memory.py` | bank account, domain, registry, injection stay |
+| S17 | Evidence drift | `tests/test_agents.py` result drift test | verdict degraded, not hidden |
+| S18 | Replayed or edited decision | `tests/test_gate.py` | replayed counter and changed text refused |
+| S19 | Key unplugged | unplug, press Send | nothing executes (fail closed) |
+| S20 | Pairing lockout | `tests/test_phone.py` | 5 wrong codes close pairing |
+| S21 | Zetaris data-quality rules | Zetaris UI or `docs/ZETARIS_USL.md` | orphan invoice, unknown vendor, unverified bank change |
+| S22 | Model per request | `logs/llm.jsonl` | Nemotron named on every call |
+| S23 | Benchmark | `eval/BENCHMARK.md` | A / B / C, lanes, before and after |
 
 ## Numbers on screen
 

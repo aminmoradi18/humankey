@@ -95,7 +95,8 @@ def state():
     paid = {x["invoice_id"]: x for x in ledger}
     last = {}
     for e in events:
-        if e.get("kind") in ("blocked", "rejected", "timeout", "refused", "executed", "forgery_attempt"):
+        if e.get("kind") in ("blocked", "rejected", "timeout", "refused", "executed", "forgery_attempt",
+                             "contract.refused"):
             last[e["invoice_id"]] = e
     receipts = {r["receipt_id"]: r for r in read("receipts")}
     llm = read("llm")

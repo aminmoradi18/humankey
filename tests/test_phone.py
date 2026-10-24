@@ -73,7 +73,7 @@ class PhoneGateTest(unittest.TestCase):
     def test_phone_approves_clean_small_payment(self):
         self.assertEqual(self.gate(Phone()).process(proposal()), "EXECUTED")
         rec = read("ledger", self.tmp)[0]
-        self.assertEqual((rec["released_by"], rec["approval"]["kind"]), ("phone (phone-test)", "phone-confirm"))
+        self.assertEqual((rec["released_by"], rec["approval"]["kind"]), ("phone (phone-test)", "phone-signature"))
 
     def test_risky_payment_goes_to_the_key_not_the_phone(self):
         g = self.gate(Phone(), key_script=["reject"])

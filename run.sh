@@ -42,6 +42,7 @@ case "$MODE" in
       DEVICE_SCRIPT=approve python3 -m gate.main import-accounts >/dev/null
     fi
     python3 -m agent.run
+    python3 -m gate.main night   # Scout contracts for what waits for a person; re-planned at approval
     python3 -m eval.run | sed -n '1,8p'
     echo
     echo "Web view: http://127.0.0.1:${WEB_PORT:-8700}   (Ctrl+C to stop)"

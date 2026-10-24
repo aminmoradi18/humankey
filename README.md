@@ -86,6 +86,16 @@ sent. Setup DDL: `scripts/register_zetaris_sources.sql`.
   recalls it and does not ask again; the person's later answers grade it (helpful / wrong). Memories can only
   settle soft findings (no PO, unusual amount, split pattern), never a new bank account, a look-alike domain,
   a registry miss or a prompt injection. Conformance suite: 13/13; product tests in `tests/test_memory.py`.
+- **Scout Intent execution contracts** (`gate/scout.py`), in the format of the Scout spec: HMAC-signed,
+  5-minute TTL, immutable, re-planned with `parentId` and one `traceId`. Each payment is a chain: a *night*
+  contract issued when the agents finish (bound to a digest of the evidence), a *morning* re-plan when a person
+  approves (what the key signs), and an *approved* re-plan that carries the approval record. The spec keeps
+  approvals as plain JSON and checks they are present; here an approval is the device's Ed25519 signature
+  over the morning contract, and the executor verifies it again itself. A software-written
+  `{kind: "user-confirm", confirmation: "yes"}` is refused (`python3 -m gate.main forge-spec INV0002`), and so
+  is a payment whose evidence changed after the night contract. This is the spec's v0.2 roadmap item
+  "approval-record management for high-risk intents". Tests: `tests/test_scout.py`. Not a full Scout
+  implementation: no intent registry, scoring or eval harness.
 
 **Meterless Runtime / Nightshift as the AI provider.** `llm/provider.py` implements the Runtime provider
 contract: Bearer token, `meterless-app` and `meterless-scope` headers, URL normalisation, `/v1/models`
