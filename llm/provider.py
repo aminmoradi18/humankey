@@ -119,7 +119,10 @@ class LLM:
         text = msg.get("content") or ""
         if not text.strip():
             raise LLMError("empty answer")
-        return text, d.get("model", model), d.get("provider"), d.get("usage", {})
+        # Nightshift may route to another model than the one asked for; its receipt says which one answered.
+        receipt = d.get("meterless") or d.get("receipt") or {}
+        used = receipt.get("routed_model") or d.get("routed_model") or d.get("model", model)
+        return text, used, d.get("provider"), d.get("usage", {}), receipt
 
     def chat(self, messages, agent, purpose="", max_tokens=1200, temperature=0.2, cache=True):
         """Return the answer text. Tries models in order; raises LLMError if all fail."""
@@ -136,7 +139,7 @@ class LLM:
         for model in self.models:
             t0 = time.time()
             try:
-                text, used, upstream, usage = self._post(model, messages, max_tokens, temperature)
+                text, used, upstream, usage, receipt = self._post(model, messages, max_tokens, temperature)
             except LLMError as e:
                 errors.append(f"{model}: {e}")
                 append("llm", {"agent": agent, "purpose": purpose, "provider": self.provider, "model": model,
@@ -148,7 +151,8 @@ class LLM:
                 continue
             append("llm", {"agent": agent, "purpose": purpose, "provider": self.provider, "model": used,
                            "upstream": upstream, "prompt_sha": key, "ms": int((time.time() - t0) * 1000),
-                           "ok": True, "usage": usage}, self.log_root)
+                           "ok": True, "usage": usage, "requested": model,
+                           **({"receipt": receipt} if receipt else {})}, self.log_root)
             CACHE.mkdir(parents=True, exist_ok=True)
             path.write_text(canonical({"model": used, "text": text}))
             return text

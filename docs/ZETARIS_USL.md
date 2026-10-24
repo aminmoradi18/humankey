@@ -64,9 +64,15 @@ compares result hashes before anything is approved.
 
 **How it saved time.** Without Zetaris, each check would need its own connector code for Postgres and
 for the GLEIF API, plus our own join, retry and caching logic. With it, the GLEIF API is a table, the
-ERP is a table, and the registry check is one `SELECT` on the USL's `vendors`. Adding GLEIF took four
-statements; most of the effort was finding real LEIs for the vendors. The data-quality rules replaced code we
-would otherwise have written (and tested) for "is every invoice's vendor known?"
+ERP is a table, and the registry check is one `SELECT` on the USL's `vendors`. In numbers:
+- GLEIF as a source: 4 statements (`scripts/register_zetaris_sources.sql`), no HTTP, paging or JSON code of ours.
+  Most of the effort was finding real LEIs for the vendors.
+- Data quality: 6 rules, each one line (5 `REGISTER DQ` expressions in `scripts/setup_zetaris.py` plus the
+  `invoices.vendor_id` foreign key declared in the USL model).
+- The count witness that the hardware key signs comes from one `SHOW DQ INVALID RECORD` query per run. It
+  replaced the anti-join and count-comparison code we would otherwise have written and tested ourselves for
+  "is every invoice's vendor known?", the check whose silent failure (an inner join dropping the invoice)
+  is exactly what an invoice fraud would hide behind.
 
 **How it helps in this kind of work.** Accounts payable fraud checks are cross-system questions: the
 ERP says what we expect, the registry says who the company really is, the payment history says where
@@ -79,7 +85,13 @@ words, and the DQ results are a standing control that does not depend on the age
 - `COMPILE USL` needs each `CREATE TABLE` on its own line; a client that normalises whitespace gets
   "Invalid DDL statement". A clearer error, or accepting `;` as the only separator, would help.
 - `DESCRIBE BY` text rejects parentheses and some punctuation; the error could name the bad character.
-- A REST table re-calls the API on every query (we saw about 1.5 s per GLEIF query). A documented,
-  per-table cache TTL would make federated checks with public APIs fast and predictable.
+- A REST table re-calls the API on every query. Measured on our GLEIF view (local install, 12 rows, 3 runs
+  each, 24 Oct): about 1.3 s per query uncached; `CACHE TABLE gleif.lei_entities` brought it to about 0.2 s
+  with identical rows. But that cache has no expiry and does not survive a restart. The documented TTL,
+  `OFFSITE CACHE TABLE gleif_rest.lei_records TO MEMORY WITH (expireInSec "900")`, returns "Cache is not
+  supported for this data source" for a Lightning REST table. An `expireInSec` for REST tables (or for
+  `CACHE TABLE`) would make federated checks with public APIs fast without serving stale registry data
+  forever. We left caching off in HumanKey: the critic re-runs every query to check it, and a cached
+  re-run would match trivially.
 - `SHOW TABLES` being disabled in favour of `SHOW NAMESPACES OR TABLES IN …` surprised our first
   script; a hint in the error message pointing to the new form would save time.

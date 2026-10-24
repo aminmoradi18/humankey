@@ -3,8 +3,9 @@
 **The agent explains why. The human holds the key.**
 
 HumanKey is a team of AI agents that investigates supplier invoices before they are paid, explains every
-decision with evidence a person can check, and cannot move money on its own: anything risky waits for a
-signed "yes" from a physical key on the desk (an ESP32 board with a small screen and two buttons).
+decision with evidence a person can check, and cannot move money on its own: anything large or risky waits
+for a signed "yes" from a physical key on the desk (an ESP32 board with a small screen and two buttons), and
+mid-size clean payments for a signed "yes" from a paired phone.
 
 Open Agent Hackathon 2026, Track 02: *The Agent That Can Explain Why*.
 
@@ -31,9 +32,25 @@ For every new invoice:
 | **Risk** | Branches: clear / block / escalate. The model may ask for more caution, never less. Recalls what a person already explained (H-MEM), for soft findings only. |
 | **Reporter** | Writes the four lines shown on the key and the evidence view. |
 
-Then the **gate**, a separate process the agents cannot call, pays clean small invoices, refuses blocked
-ones, and sends everything else to the key with a short-lived signed contract. It executes only when the
-device's Ed25519 signature, the exact text that was shown, a fresh counter and the contract all check out.
+Then the **gate**, a separate process the agents cannot call, decides who may approve:
+
+| Payment | Who approves |
+|---|---|
+| clean, under 4,000 | nobody: paid by policy (the gate enforces the limit itself, whatever the agents say) |
+| clean, 4,000 to 10,000, paying the account this vendor was last paid to | the paired phone (fingerprint or screen lock) |
+| 10,000 or more, any risk signal, or a new bank account | the hardware key |
+| prompt injection, or new account plus look-alike domain | nobody: blocked |
+
+The approver is written into the signed contract, so a phone signature on a hardware-key payment is refused.
+Each payment is a chain of contracts: a night contract when the agents finish (bound to the evidence), a
+morning re-plan when a person approves (what the device signs), and an approved contract that carries the
+signed approval record. The gate executes only when the device's Ed25519 signature, the exact text that was
+shown, a fresh counter and the whole chain check out; if the evidence changed overnight, nothing is paid.
+
+On the key, a clean payment that only needs a person because of its amount shows `CLEAN - OVER LIMIT` with a
+green LED; anything with a risk fills the yellow band with the warning and lights the LED amber. The key also
+keeps its own ledger of approved accounts and a count of invoices checked, so it warns about a changed bank
+account or a skipped invoice even when the laptop's data says all is well.
 
 Payments are simulated: "execute" appends a line to `gate/state/ledger.jsonl`.
 
@@ -49,6 +66,11 @@ Requirements: Python 3.10+, Node.js 20+, `pip install -r requirements.txt`.
 Open http://127.0.0.1:8700, pick an invoice, read why, and press **Send to the key**. Without the hardware a
 browser emulator answers. It is labelled EMULATOR everywhere and signs with its own key, so it can never pass
 for the device.
+
+Phone (optional, Android with Expo Go 58): `cd mobile && npm install && npx expo start`, start the web view
+with `WEB_HOST=0.0.0.0 DEVICE=serial` so the phone can reach it, scan the QR code, and enter the pairing code
+the server prints together with `http://<laptop LAN address>:8700`. Pairing is one-time (6 digits, locks after
+5 wrong tries); the phone's private key stays in its secure storage.
 
 Live mode (needs Docker, a local Zetaris install, and a model provider in `.env`):
 
@@ -112,7 +134,12 @@ endpoints via OpenRouter in development; an open-weights Nemotron on the laptop'
 - Invoices, accounts and e-mails are synthetic. The vendors are real companies with their real LEIs; the
   frauds are impersonations of them, not wrongdoing by them.
 - The key verifies what it shows and signs what you decide; it cannot prove the data is true.
-- The browser emulator is for judging without hardware. The gate can be set to refuse it.
+- The browser emulator is for judging without hardware. The gate can be set to refuse it, and it refuses to
+  serve the network while the emulator is the device.
+- The phone has no account ledger of its own; the gate checks the payment history for it, through Zetaris.
+  A phone is a weaker approver than the key, which is why it only sees clean mid-size payments.
+- Contract times are ISO strings; the TTL is the spec's 5 minutes. We implement the contract chain and
+  approval records of Scout, not its intent registry, scoring or eval harness.
 - Nemotron Content Safety was tried for injection detection and rated the injected text "safe" (it targets
   harmful content, not instructions to an AI), so the Guard uses a general Nemotron classifier plus rules.
 
@@ -123,11 +150,15 @@ agent/      planner, investigator, guard, critic, risk, reporter; tools.py holds
 zetaris/    Zetaris client: receipts, snapshots (sample mode), write guard
 llm/        model provider: meterless | openrouter | ollama | custom | replay
 meterless/  World Model + H-MEM reference engines and the service that exposes them
-gate/       contracts, device protocol, signature checks, ledger
-web/        evidence view and key emulator
+gate/       Scout contracts (scout.py), approval tiers, device protocol, signature checks, ledger
+firmware/   ESP32-S3 / ESP8266 key: OLED, two buttons, Ed25519, counter, account ledger, count witness
+mobile/     Expo phone app for the phone tier
+web/        evidence view, key emulator, phone pairing and relay
 data/       synthetic company generator; labels are never shown to the agents
 eval/       scores a run against the labels
+eval/bench.py  benchmark on generated companies (A rule, B agent alone, C HumanKey); eval/tiers.py lanes
 tests/      unit and product tests
+demo/       video script
 ```
 
 ## Pre-existing components
