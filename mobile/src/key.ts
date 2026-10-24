@@ -35,7 +35,21 @@ export async function identity(): Promise<Identity> {
 
 export const sha256 = (text: string) => Crypto.digestStringAsync(Crypto.CryptoDigestAlgorithm.SHA256, text);
 
-export type Pending = { req: string; text: string; c: string; exp: number; cov: number };
+export type Pending = { req: string; text: string; c: string; cj: string; exp: number; cov: number };
+
+// Clear signing, like the hardware key: hash the contract bytes here, read the invoice and amount
+// from those bytes, and refuse if they are not what this screen shows. Returns the hash to sign.
+export async function checkContract(p: Pending, invoice: string, amount: number): Promise<string> {
+  const c = await sha256(p.cj);
+  const k = JSON.parse(p.cj);
+  const pay = k.intent?.parameters ?? {};
+  if (k.contractId !== p.req) throw new Error('contract is for another request; not signing');
+  if (pay.invoice_id !== invoice || Math.abs(Number(pay.amount) - amount) > 0.005)
+    throw new Error(`contract says ${pay.invoice_id} $${Number(pay.amount).toLocaleString('en-US')}, screen says ${invoice}; not signing`);
+  if (k.evidence?.displaySha256 && k.evidence.displaySha256 !== (await sha256(p.text)))
+    throw new Error('contract text differs from what is shown; not signing');
+  return c;
+}
 
 // Sign what the screen showed. The counter only goes up, so an old signature can't be replayed.
 export async function signDecision(p: Pending, d: 'approve' | 'reject') {

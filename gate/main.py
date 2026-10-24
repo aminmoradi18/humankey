@@ -15,6 +15,7 @@ Usage:
   python3 -m gate.main forge INV0008            try to approve without the device (must be refused)
   python3 -m gate.main forge-spec INV0008       write the spec's plain {kind: user-confirm} approval (must be refused)
   python3 -m gate.main tamper INV0011           attack demo: change a waiting payment after its night contract
+  python3 -m gate.main lie INV0011              attack demo: the laptop shows the key a smaller amount than it pays
 """
 import json
 import os
@@ -145,8 +146,11 @@ class Gate:
             self.counters[dev] = max(int(counter), int(self.counters.get(dev, 0)))
             (self.state / "counters.json").write_text(canonical(self.counters))
 
-    def execute(self, p, how, approval=None):
-        line = {"invoice_id": p["invoice_id"], "vendor_id": p["vendor_id"], "amount": p["amount"],
+    def execute(self, p, how, approval=None, pay=None):
+        """Pay what the approved contract says (when there is one), not what the proposal says."""
+        pay = pay or {"invoice_id": p["invoice_id"], "amount": p["amount"], "payee": scout.payee(p)}
+        line = {"invoice_id": pay["invoice_id"], "vendor_id": pay["payee"]["vendor"], "amount": pay["amount"],
+                "iban_hash": pay["payee"]["iban_hash"], "iban_last4": pay["payee"]["iban_last4"],
                 "released_by": how, "approval": approval}
         append("ledger", line, self.state)
         event("executed", p["invoice_id"], agent="gate", released_by=how)
@@ -179,11 +183,11 @@ class Gate:
         c_sha = sha256(canonical(contract))
         event("sent_to_device", inv, agent="gate", contract=contract["contractId"], text=p["key_text"], tier=tier)
         w = p.get("witness")
-        hdr = p["findings"].get("invoice_header", {}).get("facts", {})
-        acct = {"v": p["vendor_id"], "h": hdr.get("iban_hash", ""), "l4": hdr.get("iban_last4", "")} \
-            if hdr.get("iban_hash") else None
-        msg = device.show(contract["contractId"], p["key_text"], c_sha, w=w, acct=acct)
+        # The device gets the contract itself, hashes it, and reads amount, payee and count from it.
+        msg = device.show(contract["contractId"], p["key_text"], canonical(contract))
         reason = self.verify(contract, p["key_text"], msg, sent=(w["exp"], w["cov"]) if w else (-1, -1))
+        if msg.get("mismatch"):
+            event("key_mismatch", inv, agent="key", problem=msg["mismatch"])
         if msg.get("warned"):
             event("key_warning", inv, agent="key", count=f"{msg.get('cov')}/{msg.get('exp')}",
                   account=msg.get("acct"), decision=msg.get("d"))
@@ -196,6 +200,10 @@ class Gate:
                                            reason="approval recorded", approvals=[record], stage="approved")
             reason = scout.check(approved, self.secret, self.devices, contract)
         if reason is None:
+            pay = approved["intent"]["parameters"]
+            if (pay["invoice_id"], pay["amount"], pay["payee"]) != (inv, p["amount"], scout.payee(p)):
+                reason = "approved contract does not match the payment"
+        if reason is None:
             event("contract.verified", inv, agent="gate", contract=approved["contractId"], engine="executor")
             approval = {"kind": record["kind"], "device_id": msg["id"], "contract_sha256": c_sha,
                         "text_sha256": msg["th"], "decision": "approve", "counter": msg["counter"],
@@ -203,7 +211,7 @@ class Gate:
                         "account_on_key": msg.get("acct"), "signature": msg["sig"],
                         "chain": [contract.get("parentId"), contract["contractId"], approved["contractId"]],
                         "contract": approved}
-            self.execute(p, f"{'phone' if tier == 'phone' else 'human key'} ({msg['id']})", approval)
+            self.execute(p, f"{'phone' if tier == 'phone' else 'human key'} ({msg['id']})", approval, pay)
             return "EXECUTED"
         state = {"reject": "REJECTED", "timeout": "TIMEOUT"}.get(msg.get("d"), "REFUSED")
         event(state.lower(), inv, agent="gate", reason=reason)
@@ -296,6 +304,20 @@ def main(argv):
         path.write_text(canonical(props))
         event("tampered", argv[1], agent="attacker", amount_before=old, amount_after=new)
         print(f"{argv[1]}: amount changed {old:,.2f} -> {new:,.2f} after the night contract")
+    elif cmd == "lie":
+        # Attack demo: malware between the gate and the key rewrites the screen text so a big payment
+        # looks like $40. The key reads the amount from the contract bytes it signs and refuses.
+        class Liar:
+            def __init__(self, dev):
+                self.dev = dev
+
+            def show(self, req, text, contract_json):
+                first, _, rest = text.partition("\n")
+                return self.dev.show(req, first.split(" $")[0] + " $40\n" + rest, contract_json)
+        p = load_json(STATE / "proposals.json", {})[argv[1]]
+        dev = open_device()
+        gate = Gate(Liar(dev), allow_emulator=isinstance(dev, EmulatorDevice))
+        print(f"{argv[1]} with the screen text changed to $40: {gate.process(dict(p, route='AWAITING_KEY'))}")
     elif cmd == "forge":
         # An attacker on the laptop writes an approval without the device's private key.
         gate = Gate(allow_emulator=True)

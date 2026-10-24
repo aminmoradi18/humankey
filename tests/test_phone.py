@@ -40,8 +40,8 @@ class Phone:
         self.key, self.d, self.counter = new_private_key(), d, counter
         self.id = "phone-test"
 
-    def show(self, req, text, contract_sha, w=None, acct=None):
-        th = sha256(text)
+    def show(self, req, text, contract_json):
+        contract_sha, th = sha256(contract_json), sha256(text)
         sig = b64(self.key.sign(decision_message(req, contract_sha, th, self.d, self.counter)))
         return {"t": "decision", "req": req, "d": self.d, "counter": self.counter, "th": th,
                 "id": self.id, "sig": sig, "exp": -1, "cov": -1, "acct": "none", "ah": ""}
@@ -84,7 +84,7 @@ class PhoneGateTest(unittest.TestCase):
         g = self.gate(ph)
         p = proposal(amount=25000.0)
         c = g.issue_contract(p, tier="hardware")
-        msg = ph.show(c["contractId"], p["key_text"], sha256(canonical(c)))
+        msg = ph.show(c["contractId"], p["key_text"], canonical(c))
         self.assertEqual(g.verify(c, p["key_text"], msg), "a phone cannot approve a hardware-key payment")
 
     def test_gate_refuses_auto_pay_at_or_over_the_auto_limit(self):
@@ -101,16 +101,16 @@ class PhoneGateTest(unittest.TestCase):
         g = self.gate(ph)
         p = proposal()
         c = g.issue_contract(p, tier="phone")
-        msg = dict(ph.show(c["contractId"], p["key_text"], sha256(canonical(c))), sig="A" * 88)
+        msg = dict(ph.show(c["contractId"], p["key_text"], canonical(c)), sig="A" * 88)
         self.assertEqual(g.verify(c, p["key_text"], msg), "device signature invalid")
         g.counters[ph.id] = 5
-        msg = ph.show(c["contractId"], p["key_text"], sha256(canonical(c)))
+        msg = ph.show(c["contractId"], p["key_text"], canonical(c))
         self.assertEqual(g.verify(c, p["key_text"], msg), "replayed decision (counter not increasing)")
 
     def test_phone_relay_passes_the_apps_answer_through(self):
         dev, ph = PhoneDevice(timeout=5), Phone()
         out = {}
-        t = threading.Thread(target=lambda: out.update(dev.show("ctr_1", "text", "c" * 64)))
+        t = threading.Thread(target=lambda: out.update(dev.show("ctr_1", "text", canonical({"evidence": {}}))))
         t.start()
         while dev.pending is None:
             time.sleep(0.01)

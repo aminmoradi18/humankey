@@ -14,7 +14,7 @@ import {
 import { SafeAreaProvider, useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import { DEFAULT_SERVER, Devices, Item, Queue, decide, devices, getServer, pair, queue, release, setServer } from './src/api';
-import { Identity, identity, signDecision } from './src/key';
+import { Identity, checkContract, identity, signDecision } from './src/key';
 import { getItem, setItem } from './src/store';
 
 // Telegram's night palette: blue for "where am I" and for actions, colour only for meaning.
@@ -514,8 +514,10 @@ function Detail({ item, onBack, refresh }: { item: Item; onBack: () => void; ref
       if (!p) throw new Error('the gate did not send a contract');
       // Sign only the exact text this screen showed.
       if (p.text !== item.key_text) throw new Error('the gate sent different text than shown; not signing');
+      // The phone hashes the contract itself and checks it says this invoice and this amount.
+      const c = await checkContract(p, item.invoice_id, item.amount);
       setState('Signing on this phone…');
-      await decide(await signDecision(p, d));
+      await decide(await signDecision({ ...p, c }, d));
       Haptics.notificationAsync(d === 'approve' ? Haptics.NotificationFeedbackType.Success : Haptics.NotificationFeedbackType.Warning);
       setState(d === 'approve' ? 'Approved. The gate checked the signature and paid.' : 'Rejected. Nothing was paid.');
       await sleep(600);

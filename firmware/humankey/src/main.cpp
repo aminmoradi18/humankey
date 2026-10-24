@@ -255,6 +255,17 @@ String waitButton() {
   return "timeout";
 }
 
+// "$12,488" from 12488.01, like the gate's Python formatting.
+String money(double amount) {
+  long n = lround(amount);
+  String digits = String(n < 0 ? -n : n), out = "";
+  for (int i = 0; i < (int)digits.length(); i++) {
+    if (i && (digits.length() - i) % 3 == 0) out += ",";
+    out += digits[i];
+  }
+  return "$" + out;
+}
+
 // One decision. Before the normal YES/NO screen the key shows its own warnings, which the
 // person must acknowledge with BT1 first:
 //  - count witness: "w":{"exp","cov","miss":[...]} - fewer invoices checked than exist, or the
@@ -263,15 +274,70 @@ String waitButton() {
 //    human approved for this vendor on THIS key (the database can be wrong; this memory is not
 //    writable by the laptop).
 // The signed message carries what the key saw: req|c|th|d|counter|exp|cov|acct:hash
+//
+// Clear signing: the gate sends the contract itself ("cj"), not its hash. The key hashes those
+// bytes, signs that hash, and takes the invoice, amount, payee account and invoice count from the
+// same bytes. If the laptop's screen text disagrees with the contract, the key shows both and
+// only lets the person reject.
 void show(JsonDocument &in) {
   String req = in["req"] | "";
   String text = in["text"] | "";
-  String c = in["c"] | "";
-  long exp = in["w"]["exp"] | -1L;
-  long cov = in["w"]["cov"] | -1L;
-  String av = in["acct"]["v"] | "";
-  String ah = in["acct"]["h"] | "";
-  String al4 = in["acct"]["l4"] | "";
+  String cj = in["cj"] | "";
+  String c = sha256Hex(cj);
+  JsonDocument k;
+  String problem = "";
+  if (!cj.length() || deserializeJson(k, cj)) problem = "no contract";
+  JsonVariant pay = k["intent"]["parameters"];
+  String inv = pay["invoice_id"] | "";
+  double amount = pay["amount"] | 0.0;
+  long exp = k["evidence"]["witness"]["exp"] | -1L;
+  long cov = k["evidence"]["witness"]["cov"] | -1L;
+  String av = pay["payee"]["vendor"] | "";
+  String ah = pay["payee"]["iban_hash"] | "";
+  String al4 = pay["payee"]["iban_last4"] | "";
+  String shownSha = k["evidence"]["displaySha256"] | "";
+  String first = text.substring(0, text.indexOf('\n') < 0 ? text.length() : text.indexOf('\n'));
+  int dollar = first.indexOf(" $");
+  String shownInv = dollar < 0 ? first : first.substring(0, dollar);
+  String num = dollar < 0 ? "" : first.substring(dollar + 2);
+  num.replace(",", "");
+  if (!problem.length() && (String(k["contractId"] | "") != req)) problem = "other request";
+  if (!problem.length() && (shownInv != inv || !num.length() || fabs(num.toDouble() - amount) > 0.5))
+    problem = "amount";
+  if (!problem.length() && shownSha.length() && shownSha != sha256Hex(text)) problem = "text";
+  if (problem.length()) {
+    led(60, 0, 0);
+    String body = problem == "amount" ? "laptop:   " + first.substring(dollar < 0 ? 0 : dollar + 1) +
+                                        "\ncontract: " + money(amount) + "\n" + inv + "\nNOT SIGNING"
+                                      : "contract " + problem + "\ndoes not match\n\nNOT SIGNING";
+    screen("!! MISMATCH !!", body, "ANY BUTTON = NO", true);
+    waitButton();
+    saved.counter += 1;
+    save();
+    String th = sha256Hex(text);
+    String msg = req + "|" + c + "|" + th + "|reject|" + String(saved.counter) + "|-1|-1|none:";
+    uint8_t sig[64];
+    Ed25519::sign(sig, saved.priv, pub, (const uint8_t *)msg.c_str(), msg.length());
+    JsonDocument out;
+    out["t"] = "decision";
+    out["req"] = req;
+    out["d"] = "reject";
+    out["counter"] = saved.counter;
+    out["th"] = th;
+    out["id"] = deviceId;
+    out["exp"] = -1;
+    out["cov"] = -1;
+    out["acct"] = "none";
+    out["ah"] = "";
+    out["warned"] = 1;
+    out["mismatch"] = problem;
+    out["sig"] = b64(sig, 64);
+    serializeJson(out, Serial);
+    Serial.println();
+    result("reject");
+    idle();
+    return;
+  }
 
   String warn = "";
   int nwarn = 0;
@@ -284,7 +350,7 @@ void show(JsonDocument &in) {
     nwarn++;
   }
   String acct = "none";
-  if (av.length()) {
+  if (av.length() && ah.length()) {
     int i = findAccount(av);
     if (i < 0) acct = "first";
     else if (ah == ext.acct[i].hash) acct = "known";

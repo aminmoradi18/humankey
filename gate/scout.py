@@ -49,12 +49,20 @@ def evidence(p):
             "displaySha256": sha256(p["key_text"])}
 
 
+def payee(p):
+    hdr = p["findings"].get("invoice_header", {}).get("facts", {})
+    return {"vendor": p["vendor_id"], "iban_hash": hdr.get("iban_hash", ""), "iban_last4": hdr.get("iban_last4", "")}
+
+
 def issue(p, secret, tier="hardware", parent=None, reason=None, approvals=(), stage="morning", now=None):
     now = time.time() if now is None else now
+    w = p.get("witness") or {}
     c = {
         "contractId": new_id(), "parentId": parent, "traceId": p["invoice_id"], "stage": stage,
         "intent": {"primary": {"id": INTENT}, "confidence": 1.0, "alternates": [],
-                   "parameters": {"invoice_id": p["invoice_id"], "amount": p["amount"], "currency": "USD"},
+                   # Everything the key shows and checks comes from here: it hashes these bytes and signs that hash.
+                   "parameters": {"invoice_id": p["invoice_id"], "amount": p["amount"], "currency": "USD",
+                                  "payee": payee(p)},
                    "references": {"vendor": {"type": "vendor", "id": p["vendor_id"]}}},
         "risk": {"level": p["risk"], "redactions": [],
                  "flags": [f["check"] for f in p["findings"].values() if f["signal"] in ("risk_up", "unknown")],
@@ -62,7 +70,7 @@ def issue(p, secret, tier="hardware", parent=None, reason=None, approvals=(), st
         "toolPlan": [{"tool": CAPABILITY, "args": {"invoice_id": p["invoice_id"]}}],
         "modelProfile": "none",
         "scope": {"user": "ap-manager", "surface": "humankey", "capabilities": [CAPABILITY]},
-        "evidence": evidence(p),
+        "evidence": dict(evidence(p), witness={"exp": w.get("exp", -1), "cov": w.get("cov", -1)}),
         "issuedAt": iso(now), "expiresAt": iso(now + TTL_S),
         "registryVersion": REGISTRY_VERSION, "policyPackVersion": POLICY_VERSION, "signedBy": "scout",
     }

@@ -59,7 +59,7 @@ class GateTest(unittest.TestCase):
         (self.tmp / "devices.json").write_text(canonical({"emulator": dev.public_key()}))
         g = Gate(dev, allow_emulator=True, state=self.tmp)
         c = g.issue_contract(PROPOSAL)
-        msg = dev.show(c["contractId"], PROPOSAL["key_text"], sha256(canonical(c)))
+        msg = dev.show(c["contractId"], PROPOSAL["key_text"], canonical(c))
         self.assertIsNone(g.verify(c, PROPOSAL["key_text"], msg))
         g._save_counter("emulator", msg["counter"])
         self.assertEqual(g.verify(c, PROPOSAL["key_text"], msg), "replayed decision (counter not increasing)")
@@ -69,9 +69,11 @@ class GateTest(unittest.TestCase):
         (self.tmp / "devices.json").write_text(canonical({"emulator": dev.public_key()}))
         g = Gate(dev, allow_emulator=True, state=self.tmp)
         c = g.issue_contract(PROPOSAL)
-        msg = dev.show(c["contractId"], "INV9001 $1\nall good\n\nPAY this?", sha256(canonical(c)))
-        self.assertEqual(g.verify(c, PROPOSAL["key_text"], msg), "device showed different text")
-        msg = dev.show(c["contractId"], PROPOSAL["key_text"], sha256(canonical(c)))
+        # Clear signing: the key reads $12,500 from the contract and will not sign a screen saying $1.
+        msg = dev.show(c["contractId"], "INV9001 $1\nall good\n\nPAY this?", canonical(c))
+        self.assertEqual((msg["d"], g.verify(c, PROPOSAL["key_text"], msg)), ("reject", "device answered reject"))
+        self.assertIn("contract says INV9001 $12,500", msg["mismatch"])
+        msg = dev.show(c["contractId"], PROPOSAL["key_text"], canonical(c))
         c["intent"]["parameters"]["amount"] = 99999
         self.assertEqual(g.verify(c, PROPOSAL["key_text"], msg), "contract signature invalid")
 

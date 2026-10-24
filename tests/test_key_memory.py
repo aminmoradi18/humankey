@@ -68,7 +68,7 @@ class KeyMemoryTest(unittest.TestCase):
         p = proposal("INV9107")
         c = g.issue_contract(p)
         from gate.crypto import sha256
-        msg = dev.show(c["contractId"], p["key_text"], sha256(canonical(c)), w={"exp": 16, "cov": 16})
+        msg = dev.show(c["contractId"], p["key_text"], canonical(c))
         self.assertEqual(g.verify(c, p["key_text"], msg, sent=(17, 16)), "device saw a different count than the gate sent")
 
 

@@ -1,4 +1,9 @@
-"""Approval devices. The gate talks to both through `show(req, text, contract_sha)`.
+"""Approval devices. The gate talks to all of them through `show(req, text, contract_json)`.
+
+Clear signing: a device is given the contract itself, not a hash of it. It hashes the bytes it got,
+reads the invoice, amount, payee account and invoice count from those same bytes, checks that the
+laptop's screen text agrees with them, and signs the hash it computed. So the screen cannot say
+$40 while the signed contract says $40,000.
 
 - SerialDevice: the ESP32 key over USB serial, JSON lines (ARCHITECTURE.md section 5).
 - EmulatorDevice: same protocol in software, with its own Ed25519 key in
@@ -16,6 +21,26 @@ from cryptography.hazmat.primitives.serialization import Encoding, NoEncryption,
 
 from common.env import ROOT
 from gate.crypto import b64, decision_message, new_private_key, public_key_b64, sha256
+
+def read_contract(contract_json, text):
+    """(sha of the bytes, what they say, problem or None). Mirrors the firmware's checks."""
+    c = json.loads(contract_json)
+    pay, ev = c["intent"]["parameters"], c.get("evidence", {})
+    seen = {"req": c.get("contractId"), "invoice": pay.get("invoice_id"), "amount": float(pay.get("amount") or 0),
+            "acct": pay.get("payee") or {}, "w": ev.get("witness") or {}}
+    first = text.split("\n", 1)[0]
+    inv, _, money = first.partition(" $")
+    try:
+        shown = float(money.replace(",", ""))
+    except ValueError:
+        shown = None
+    problem = None
+    if inv != seen["invoice"] or shown is None or abs(shown - seen["amount"]) > 0.5:
+        problem = f"screen says {first!r}, contract says {seen['invoice']} ${seen['amount']:,.0f}"
+    elif ev.get("displaySha256") and ev["displaySha256"] != sha256(text):
+        problem = "screen text is not the text in the contract"
+    return sha256(contract_json), seen, problem
+
 
 def emu_dir():
     return Path(os.environ.get("HUMANKEY_EMU_DIR", ROOT / "device_emu"))
@@ -79,15 +104,26 @@ class EmulatorDevice:
             self._save_ledger(led)
         return {"t": "acct_import", "d": d, "n": len(led["accounts"])}
 
-    def show(self, req, text, contract_sha, w=None, acct=None):
+    def show(self, req, text, contract_json):
+        contract_sha, seen, problem = read_contract(contract_json, text)
+        if problem or seen["req"] != req:
+            # Nothing to approve: the person only sees the mismatch, any answer is a rejection.
+            self._ask(f"!! MISMATCH !!\n{problem or 'contract is for another request'}\nnot signing")
+            counter = self._next_counter()
+            th = sha256(text)
+            return {"t": "decision", "req": req, "d": "reject", "counter": counter, "th": th, "id": self.device_id,
+                    "exp": -1, "cov": -1, "acct": "none", "ah": "", "warned": 1, "mismatch": problem,
+                    "sig": b64(self._key.sign(decision_message(req, contract_sha, th, "reject", counter)))}
         led = self._ledger()
-        exp, cov = (w or {}).get("exp", -1), (w or {}).get("cov", -1)
+        w, acct = seen["w"], {"v": seen["acct"].get("vendor"), "h": seen["acct"].get("iban_hash", ""),
+                              "l4": seen["acct"].get("iban_last4", "")}
+        exp, cov = w.get("exp", -1), w.get("cov", -1)
         warn, status = [], "none"
         if exp >= 0 and cov >= 0 and cov < exp:
             warn.append(f"{exp - cov} of {exp} NOT checked")
         if exp >= 0 and led["last_expected"] and exp < led["last_expected"]:
             warn.append(f"count fell {led['last_expected']}->{exp}")
-        if acct and acct.get("v"):
+        if acct.get("v") and acct.get("h"):
             known = led["accounts"].get(acct["v"])
             status = "first" if not known else ("known" if known["h"] == acct["h"] else "new")
             if status == "new":
@@ -105,7 +141,7 @@ class EmulatorDevice:
                 led["accounts"][acct["v"]] = {"h": acct["h"], "l4": acct["l4"]}
             self._save_ledger(led)
         th = sha256(text)
-        ah = (acct or {}).get("h", "")
+        ah = acct.get("h", "") if status != "none" else ""
         msg = {"t": "decision", "req": req, "d": d, "counter": counter, "th": th, "id": self.device_id,
                "exp": exp, "cov": cov, "acct": status, "ah": ah, "warned": len(warn)}
         if d != "timeout":
@@ -149,13 +185,15 @@ class SerialDevice:
         self._send({"t": "acct_import", "items": items})
         return self._read("acct_import", time.time() + self.timeout + 10)
 
-    def show(self, req, text, contract_sha, w=None, acct=None):
-        cmd = {"t": "show", "req": req, "text": text, "c": contract_sha}
-        if w:
-            cmd["w"] = {"exp": w["exp"], "cov": w["cov"]}
-        if acct:
-            cmd["acct"] = acct
-        self._send(cmd)
+    def show(self, req, text, contract_json):
+        if not contract_json.isascii():
+            raise ValueError("contract must be ASCII so the board hashes the same bytes")
+        # The board ignores input while it shows the last result (about 5 s), and a whole contract is
+        # longer than its receive buffer, so wait until it answers a ping before sending.
+        ready = time.time() + 15
+        while time.time() < ready and not self.ping():
+            pass
+        self._send({"t": "show", "req": req, "text": text, "cj": contract_json})
         # a warning screen may come first: allow two answers' worth of time
         msg = self._read("decision", time.time() + 2 * self.timeout + 10)
         return msg or {"t": "decision", "req": req, "d": "timeout", "counter": None, "th": None,
@@ -175,9 +213,11 @@ class PhoneDevice:
         self.pending = None
         self.answers = queue.Queue()
 
-    def show(self, req, text, contract_sha, w=None, acct=None):
-        self.pending = {"req": req, "text": text, "c": contract_sha,
-                        "exp": (w or {}).get("exp", -1), "cov": (w or {}).get("cov", -1)}
+    def show(self, req, text, contract_json):
+        # The app hashes cj itself and checks it against what it shows; c is only a convenience.
+        w = json.loads(contract_json).get("evidence", {}).get("witness") or {}
+        self.pending = {"req": req, "text": text, "cj": contract_json, "c": sha256(contract_json),
+                        "exp": w.get("exp", -1), "cov": w.get("cov", -1)}
         try:
             msg = self.answers.get(timeout=self.timeout)
         except queue.Empty:

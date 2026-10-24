@@ -34,7 +34,8 @@ Before recording:
 | 15 | 2:32 | Terminal: `python3 -m gate.main forge-spec INV0002` → REFUSED | type the command | Now software writes the Scout approval record itself: "user-confirm, yes". Refused: only the device's signature approves. |
 | 15b | 2:42 | Web timeline for INV0011: night contract, expired, morning re-plan, approved | none | The agents work at night. Their contract expires. In the morning a fresh one is chained to it, and that is what I sign. |
 | 15c | 2:52 | Terminal: `python3 -m gate.main tamper INV0005`, then the web: "evidence changed since the night contract" | type the command, press Send | Someone edits a waiting payment overnight. In the morning the chain stops. Nothing is paid. |
-| 16 | 3:02 | Key warning: count 16 of 17 | press I SEE | The key also counts. Seventeen invoices came in, sixteen were checked. It tells me. |
+| 15d | 2:58 | **The big moment.** Split screen. Left: the laptop, where malware rewrote the screen text of INV0011 to "$40" (`python3 -m gate.main lie INV0011`). Right: close-up of the key. The yellow band fills: `!! MISMATCH !!`, `laptop: $40`, `contract: $12,488`, `NOT SIGNING`. LED red. | press any button | Now the laptop itself lies. It shows me forty dollars. But the key doesn't read the laptop's words. It reads the amount from the contract it signs. Twelve thousand. It won't sign. What you see on the key is what gets paid. |
+| 16 | 3:12 | Key warning: count 16 of 17 | press I SEE | The key also counts. Seventeen invoices came in, sixteen were checked. It tells me. |
 | 17 | 3:12 | Web: answer on the key, "blanket PO" stored in H-MEM; next run it is recalled | type the note | I explain a soft finding once. Meterless H-MEM remembers it, but never for a bank account. |
 | 18 (opt) | 3:22 | BENCHMARK.md table, A / B / C | none | We tested on generated companies with planted frauds. Frauds paid with no human: zero. |
 | 19 (opt) | 3:32 | Before / after table, held-out seeds | none | We publish our failures and the fix, measured on companies we did not tune on. |
@@ -54,6 +55,7 @@ Before recording:
 - [ ] Forged approval refused, in the Meterless Scout contract format (scene 15)
 - [ ] Night contract, morning re-plan, approval record (scene 15b)
 - [ ] Payment changed overnight is stopped (scene 15c)
+- [ ] Clear signing: the key reads the amount from the contract it signs and refuses a lying screen (scene 15d)
 - [ ] Count witness on the key (scene 16)
 - [ ] H-MEM memory of a human explanation (scene 17)
 - [ ] Benchmark with baselines, zero frauds paid (scene 18)
@@ -91,6 +93,7 @@ Every scenario we have, with how to produce it. Run on `./run.sh sample` state u
 | S20 | Pairing lockout | `tests/test_phone.py` | 5 wrong codes close pairing |
 | S21 | Zetaris data-quality rules | Zetaris UI or `docs/ZETARIS_USL.md` | orphan invoice, unknown vendor, unverified bank change |
 | S22 | Model per request | `logs/llm.jsonl` | Nemotron named on every call |
+| S24 | Lying screen (clear signing) | `python3 -m gate.main lie INV0011` with the key plugged in | !! MISMATCH !! laptop $40, contract $12,488, NOT SIGNING |
 | S23 | Benchmark | `eval/BENCHMARK.md` | A / B / C, lanes, before and after |
 
 ## Numbers on screen

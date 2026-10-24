@@ -47,6 +47,14 @@ morning re-plan when a person approves (what the device signs), and an approved 
 signed approval record. The gate executes only when the device's Ed25519 signature, the exact text that was
 shown, a fresh counter and the whole chain check out; if the evidence changed overnight, nothing is paid.
 
+The key does clear signing, like a hardware crypto wallet: the gate sends it the contract itself, and the
+key hashes those bytes, signs that hash, and reads the invoice, amount, payee account and invoice count from
+the same bytes. If the screen text the laptop sends disagrees (`python3 -m gate.main lie INV0011` shows "$40"
+for a $12,488 payment), the key shows both numbers and only lets the person reject. The phone app does the same
+check before it signs. The executor then pays from the approved contract, not from the agents' proposal.
+This protects against the agents, the web server or the USB path lying about a payment; it does not make a
+fully compromised gate trustworthy.
+
 On the key, a clean payment that only needs a person because of its amount shows `CLEAN - OVER LIMIT` with a
 green LED; anything with a risk fills the yellow band with the warning and lights the LED amber. The key also
 keeps its own ledger of approved accounts and a count of invoices checked, so it warns about a changed bank
