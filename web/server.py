@@ -74,7 +74,11 @@ def phone_queue():
         if p["invoice_id"] not in t:
             continue
         hdr = p["findings"].get("invoice_header", {}).get("facts", {})
+        last = last_paid.get(p["vendor_id"])
+        # The vendor master can be edited by an attacker; the payment history is what was actually paid.
+        same = None if not (last and hdr.get("iban_hash")) else last == hdr["iban_hash"]
         out.append({"invoice_id": p["invoice_id"], "vendor_id": p["vendor_id"], "amount": p["amount"],
+                    "last_paid_match": same,
                     "risk": p["risk"], "tier": t[p["invoice_id"]], "key_text": p["key_text"],
                     "explanation": p.get("explanation", ""), "subject": hdr.get("subject", ""),
                     "findings": [{"check": f["check"], "signal": f["signal"], "summary": f["summary"]}

@@ -44,7 +44,7 @@ class MemoryTest(unittest.TestCase):
     def test_human_answer_settles_soft_finding_next_time(self):
         self.w.remember("V007", "purchase_order", "Kennametal tooling is bought on a blanket PO, no PO per invoice",
                         "ap-manager", "INV0007")
-        f = {"invoice_header": dict(finding("invoice_header", "neutral"), facts={"amount": 4000.0}),
+        f = {"invoice_header": dict(finding("invoice_header", "neutral"), facts={"amount": 3000.0}),
              "purchase_order": finding("purchase_order", "risk_up", "no purchase order referenced"),
              "bank_account": finding("bank_account", "risk_down")}
         used = apply_memory(self.w, "V007", f)

@@ -11,7 +11,7 @@ Reporter     writes the 4x21 text for the device and the evidence view.
 import json
 import re
 
-from agent.tools import APPROVAL_THRESHOLD, CATALOG
+from agent.tools import APPROVAL_THRESHOLD, AUTO_LIMIT, CATALOG
 from common.jsonl import append
 from llm.provider import LLMError
 
@@ -221,7 +221,7 @@ class Risk:
             proposal, risk = wanted, "medium"
         if proposal == "block":
             route = "BLOCKED"
-        elif proposal == "escalate" or amount >= APPROVAL_THRESHOLD:
+        elif proposal == "escalate" or amount >= AUTO_LIMIT:
             route = "AWAITING_KEY"
         else:
             route = "QUEUED_AUTO"

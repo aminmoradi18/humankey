@@ -87,6 +87,15 @@ class PhoneGateTest(unittest.TestCase):
         msg = ph.show(c["contractId"], p["key_text"], sha256(canonical(c)))
         self.assertEqual(g.verify(c, p["key_text"], msg), "a phone cannot approve a hardware-key payment")
 
+    def test_gate_refuses_auto_pay_at_or_over_the_auto_limit(self):
+        g = self.gate(Phone())
+        p = dict(proposal(amount=7000.0), route="QUEUED_AUTO", proposal="clear", invoice_id="INV7002")
+        self.assertEqual(g.process(p), "EXECUTED")
+        self.assertEqual(read("ledger", self.tmp)[0]["released_by"], "phone (phone-test)")
+        small = dict(proposal(amount=1500.0), route="QUEUED_AUTO", proposal="clear", invoice_id="INV7003")
+        self.assertEqual(g.process(small), "EXECUTED")
+        self.assertTrue(read("ledger", self.tmp)[1]["released_by"].startswith("policy:auto"))
+
     def test_forged_and_replayed_phone_decisions_refused(self):
         ph = Phone()
         g = self.gate(ph)

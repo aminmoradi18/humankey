@@ -21,6 +21,7 @@ import time
 import uuid
 
 from agent.agents import event
+from agent.tools import AUTO_LIMIT
 from common.env import ROOT, load_env
 from common.jsonl import append, canonical, read
 from gate.crypto import contract_ok, contract_secret, decision_message, sha256, sign_contract, verify_ed25519
@@ -144,8 +145,12 @@ class Gate:
             event("blocked", inv, agent="gate")
             return "BLOCKED"
         if p["route"] == "QUEUED_AUTO":
-            self.execute(p, "policy:auto (clear, low risk, under threshold)")
-            return "EXECUTED"
+            # The gate keeps its own limit: an agent that marks a large payment "auto" still needs a person.
+            if (p.get("amount") or 0) < AUTO_LIMIT:
+                self.execute(p, f"policy:auto (clear, low risk, under {AUTO_LIMIT:,.0f})")
+                return "EXECUTED"
+            event("auto_refused", inv, agent="gate", amount=p.get("amount"))
+            p = dict(p, route="AWAITING_KEY")
         tier = "hardware"
         if self.phone is not None and any(d.startswith("phone-") for d in self.devices):
             if self.last_paid is None:

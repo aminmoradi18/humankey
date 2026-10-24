@@ -8,8 +8,9 @@ import { getItem, setItem } from './src/store';
 import { StatusBar } from 'expo-status-bar';
 import { useCallback, useEffect, useRef, useState } from 'react';
 import {
-  ActivityIndicator, Platform, Pressable, RefreshControl, SafeAreaView, ScrollView, StyleSheet, Text, TextInput, View,
+  ActivityIndicator, BackHandler, Platform, Pressable, RefreshControl, ScrollView, StyleSheet, Text, TextInput, View,
 } from 'react-native';
+import { SafeAreaProvider, useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import { DEFAULT_SERVER, Item, Queue, decide, getServer, pair, queue, release, setServer } from './src/api';
 import { Identity, identity, signDecision } from './src/key';
@@ -21,7 +22,27 @@ const C = {
 const money = (n: number) => '$' + n.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
 const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
 
+// One status per invoice, the same words the hardware key shows in its yellow band.
+type Status = { tone: string; title: string; text: string };
+function status(it: Item): Status {
+  const ups = it.findings.filter((f) => f.signal === 'risk_up' || f.signal === 'unknown');
+  const bank = it.findings.find((f) => f.check === 'bank_account');
+  if (it.last_paid_match === false && bank && /verified/.test(bank.summary))
+    return { tone: C.amber, title: 'New account · change verified', text: `${bank.summary}. The hardware key will still ask you to confirm the new account.` };
+  if (it.last_paid_match === false) return { tone: C.red, title: 'Account differs from last payment', text: 'Zetaris payment history shows this vendor was last paid to a different bank account. Call the vendor on a known number before approving.' };
+  if (it.tier === 'phone') return { tone: C.green, title: 'Clean · phone can approve', text: 'Every check passed, it is between $4,000 and $10,000, and it pays the account this vendor was last paid on.' };
+  if (!ups.length && it.amount >= 10000) return { tone: C.green, title: 'Clean · over the limit', text: 'Every check passed. It needs your hardware key only because it is over $10,000.' };
+  if (!ups.length) return { tone: C.amber, title: 'Needs the hardware key', text: 'Every check passed, but there is no payment history to compare the bank account with.' };
+  return { tone: C.red, title: 'Risk found', text: ups.map((f) => f.summary).join(' · ') };
+}
+const tint = (hex: string, a: number) => hex + Math.round(a * 255).toString(16).padStart(2, '0');
+
 export default function App() {
+  return <SafeAreaProvider><Main /></SafeAreaProvider>;
+}
+
+function Main() {
+  const insets = useSafeAreaInsets();
   const [me, setMe] = useState<Identity | null>(null);
   const [paired, setPaired] = useState<boolean | null>(null);
   const [q, setQ] = useState<Queue | null>(null);
@@ -52,15 +73,23 @@ export default function App() {
   }, [paired, refresh]);
 
   const item = q?.items.find((i) => i.invoice_id === open);
+  useEffect(() => {
+    const sub = BackHandler.addEventListener('hardwareBackPress', () => {
+      if (!open) return false;
+      setOpen(null);
+      return true;
+    });
+    return () => sub.remove();
+  }, [open]);
   return (
     <LinearGradient colors={C.bg} style={{ flex: 1 }}>
       <StatusBar style="light" />
-      <SafeAreaView style={{ flex: 1 }}>
+      <View style={{ flex: 1, paddingTop: insets.top, paddingBottom: insets.bottom }}>
         {paired === null || !me ? <ActivityIndicator color={C.blue} style={{ marginTop: 120 }} />
           : !paired ? <Pairing me={me} onDone={() => setPaired(true)} />
           : item ? <Detail item={item} onBack={() => setOpen(null)} refresh={refresh} />
           : <Home q={q} err={err} me={me} onOpen={setOpen} refresh={refresh} />}
-      </SafeAreaView>
+      </View>
     </LinearGradient>
   );
 }
@@ -133,18 +162,18 @@ function TierBadge({ tier }: { tier: Item['tier'] }) {
 }
 
 function Row({ it, onPress }: { it: Item; onPress: () => void }) {
-  const ups = it.findings.filter((f) => f.signal === 'risk_up');
+  const st = status(it);
   return (
     <Pressable onPress={onPress} style={({ pressed }) => [s.card, s.row, pressed && { opacity: 0.75 }]}>
+      <View style={[s.stripe, { backgroundColor: it.done ? C.line : st.tone }]} />
       <View style={{ flex: 1 }}>
         <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' }}>
           <Text style={{ color: C.dim, fontSize: 13, fontWeight: '700' }}>{it.invoice_id} · {it.vendor_id}</Text>
           <TierBadge tier={it.tier} />
         </View>
         <Text style={s.amount}>{money(it.amount)}</Text>
-        <Text style={{ color: ups.length ? C.amber : C.dim, fontSize: 14 }} numberOfLines={1}>
-          {it.done ? `Done: ${it.done}` : ups.length ? ups.map((f) => f.summary).join(' · ')
-            : it.amount >= 10000 ? 'Checks passed · over the $10,000 limit' : 'Every check passed'}
+        <Text style={{ color: it.done ? C.dim : st.tone, fontSize: 14, fontWeight: '600' }} numberOfLines={1}>
+          {it.done ? `Done: ${it.done}` : st.title}
         </Text>
       </View>
     </Pressable>
@@ -168,9 +197,9 @@ function Home({ q, err, me, onOpen, refresh }: { q: Queue | null; err: string; m
         <Text style={[s.amount, { fontSize: 38 }]}>{money(total)}</Text>
         <Text style={{ color: C.dim, fontSize: 14 }}>{mine.length} on this phone · {key.length} need the hardware key</Text>
       </LinearGradient>
-      <Section title="You can approve here" items={mine} onOpen={onOpen} empty="Nothing waiting. Small, clean invoices pay themselves." />
+      <Section title="You can approve here" items={mine} onOpen={onOpen} empty="Nothing waiting. Clean invoices under $4,000 pay themselves." />
       <Section title="Hardware key only" items={key} onOpen={onOpen}
-        note="Over $10,000, or a check found risk. A phone can't approve these: the gate refuses a phone signature on them." />
+        note="Over $10,000, or something looks wrong. A phone can't approve these: the gate refuses a phone signature on them." />
       {done.length ? <Section title="Done" items={done} onOpen={onOpen} /> : null}
     </ScrollView>
   );
@@ -227,58 +256,69 @@ function Detail({ item, onBack, refresh }: { item: Item; onBack: () => void; ref
     }
   };
 
+  const st = status(item);
+  const order = { risk_up: 0, unknown: 1, risk_down: 2, neutral: 3 } as Record<string, number>;
+  const findings = [...item.findings].sort((x, y) => (order[x.signal] ?? 3) - (order[y.signal] ?? 3));
   return (
-    <ScrollView contentContainerStyle={{ paddingBottom: 40 }}>
-      <Pressable onPress={onBack} style={{ paddingHorizontal: 22, paddingTop: 22 }}>
-        <Text style={{ color: C.blue, fontSize: 16, fontWeight: '600' }}>‹ Approvals</Text>
-      </Pressable>
-      <View style={{ paddingHorizontal: 22, marginTop: 14 }}>
+    <View style={{ flex: 1 }}>
+      <View style={s.topbar}>
+        <Pressable onPress={onBack} hitSlop={12} style={({ pressed }) => [s.round, pressed && { opacity: 0.6 }]}>
+          <Text style={{ color: C.text, fontSize: 22, marginTop: -2 }}>‹</Text>
+        </Pressable>
+        <Text style={{ color: C.text, fontSize: 16, fontWeight: '700' }}>{item.invoice_id}</Text>
         <TierBadge tier={item.tier} />
-        <Text style={[s.amount, { fontSize: 44, marginTop: 10 }]}>{money(item.amount)}</Text>
-        <Text style={{ color: C.dim, fontSize: 15 }}>{item.invoice_id} · {item.vendor_id} · risk {item.risk}</Text>
       </View>
-      {item.explanation ? (
-        <View style={[s.card, { marginHorizontal: 22, marginTop: 18 }]}>
-          <Text style={s.label}>Why it's here</Text>
-          <Text style={{ color: C.text, fontSize: 15, lineHeight: 22, marginTop: 6 }}>{item.explanation}</Text>
+      <ScrollView contentContainerStyle={{ paddingBottom: 30 }}>
+        <View style={{ paddingHorizontal: 22, marginTop: 8 }}>
+          <Text style={[s.amount, { fontSize: 46 }]}>{money(item.amount)}</Text>
+          <Text style={{ color: C.dim, fontSize: 15 }}>{item.vendor_id} · risk {item.risk}</Text>
         </View>
-      ) : null}
-      <Text style={[s.h2, { marginTop: 22 }]}>Checks run through Zetaris</Text>
-      <View style={[s.card, { marginHorizontal: 22, paddingVertical: 6 }]}>
-        {item.findings.map((f, i) => (
-          <View key={f.check} style={[s.check, i > 0 && { borderTopWidth: 1, borderTopColor: C.line }]}>
-            <View style={[s.dot, { backgroundColor: f.signal === 'risk_up' ? C.amber : f.signal === 'risk_down' ? C.green : C.dim }]} />
-            <View style={{ flex: 1 }}>
-              <Text style={{ color: C.dim, fontSize: 12, fontWeight: '700' }}>{f.check.replace(/_/g, ' ').toUpperCase()}</Text>
-              <Text style={{ color: C.text, fontSize: 14, marginTop: 2 }}>{f.summary}</Text>
-            </View>
+        <View style={[s.card, { marginHorizontal: 22, marginTop: 18, backgroundColor: tint(st.tone, 0.1), borderColor: tint(st.tone, 0.45) }]}>
+          <View style={{ flexDirection: 'row', alignItems: 'center', gap: 10 }}>
+            <View style={[s.dot, { backgroundColor: st.tone, marginTop: 0 }]} />
+            <Text style={{ color: st.tone, fontSize: 17, fontWeight: '800' }}>{st.title}</Text>
           </View>
-        ))}
-      </View>
-      <Text style={[s.h2, { marginTop: 22 }]}>What you sign</Text>
-      <View style={[s.card, { marginHorizontal: 22, backgroundColor: '#05070D' }]}>
-        <Text style={{ color: C.green, fontFamily: 'monospace', fontSize: 14, lineHeight: 21 }}>{item.key_text}</Text>
-      </View>
+          <Text style={{ color: C.text, fontSize: 15, lineHeight: 22, marginTop: 8 }}>{st.text}</Text>
+          {item.explanation ? <Text style={{ color: C.dim, fontSize: 14, lineHeight: 20, marginTop: 10 }}>Agent: {item.explanation}</Text> : null}
+        </View>
+        <Text style={[s.h2, { marginTop: 24 }]}>Checks run through Zetaris</Text>
+        <View style={[s.card, { marginHorizontal: 22, paddingVertical: 6 }]}>
+          {findings.map((f, i) => (
+            <View key={f.check} style={[s.check, i > 0 && { borderTopWidth: 1, borderTopColor: C.line }]}>
+              <View style={[s.dot, { backgroundColor: f.signal === 'risk_up' ? C.red : f.signal === 'unknown' ? C.amber : f.signal === 'risk_down' ? C.green : C.dim }]} />
+              <View style={{ flex: 1 }}>
+                <Text style={{ color: C.dim, fontSize: 12, fontWeight: '700' }}>{f.check.replace(/_/g, ' ').toUpperCase()}</Text>
+                <Text style={{ color: C.text, fontSize: 14, marginTop: 2, lineHeight: 20 }}>{f.summary}</Text>
+              </View>
+            </View>
+          ))}
+        </View>
+        <Text style={[s.h2, { marginTop: 24 }]}>{phone ? 'What you sign' : 'What the key will show'}</Text>
+        <View style={[s.card, { marginHorizontal: 22, backgroundColor: '#05070D' }]}>
+          <Text style={{ color: C.green, fontFamily: 'monospace', fontSize: 14, lineHeight: 21 }}>{item.key_text}</Text>
+        </View>
+        {!phone && !item.done ? (
+          <View style={[s.card, { marginHorizontal: 22, marginTop: 16, borderColor: tint(C.amber, 0.4) }]}>
+            <Text style={{ color: C.amber, fontSize: 16, fontWeight: '800' }}>Approve on the HumanKey device</Text>
+            <Text style={{ color: C.dim, fontSize: 14, marginTop: 6, lineHeight: 20 }}>
+              The device keeps its own record of every account it approved, so it can catch a changed bank account
+              even if this laptop is hacked. A phone can't, so the gate refuses a phone signature here.
+            </Text>
+          </View>
+        ) : null}
+        {state ? <Text style={{ color: C.text, marginHorizontal: 22, marginTop: 14, fontSize: 14 }}>{state}</Text> : null}
+      </ScrollView>
       {phone ? (
-        <View style={{ marginHorizontal: 22, marginTop: 20, gap: 10 }}>
-          <Pressable onPress={() => act('approve')} style={({ pressed }) => [s.btn, { backgroundColor: C.green, opacity: pressed ? 0.85 : 1 }]}>
-            <Text style={[s.btnText, { color: '#04140C' }]}>Approve with fingerprint</Text>
-          </Pressable>
-          <Pressable onPress={() => act('reject')} style={({ pressed }) => [s.btn, { backgroundColor: 'transparent', borderWidth: 1, borderColor: C.red, opacity: pressed ? 0.7 : 1 }]}>
+        <View style={s.actions}>
+          <Pressable onPress={() => act('reject')} style={({ pressed }) => [s.btn, s.ghost, { opacity: pressed ? 0.7 : 1 }]}>
             <Text style={[s.btnText, { color: C.red }]}>Reject</Text>
           </Pressable>
-        </View>
-      ) : !item.done ? (
-        <View style={[s.card, { marginHorizontal: 22, marginTop: 20, borderColor: 'rgba(255,181,71,0.4)' }]}>
-          <Text style={{ color: C.amber, fontSize: 16, fontWeight: '800' }}>Approve on the HumanKey device</Text>
-          <Text style={{ color: C.dim, fontSize: 14, marginTop: 6, lineHeight: 20 }}>
-            This payment is over $10,000 or a check found risk. The device keeps its own record of every account it
-            approved, so it can catch a changed bank account even if this laptop is hacked. A phone can't.
-          </Text>
+          <Pressable onPress={() => act('approve')} style={({ pressed }) => [s.btn, { flex: 2, marginTop: 0, backgroundColor: C.green, opacity: pressed ? 0.85 : 1 }]}>
+            <Text style={[s.btnText, { color: '#04140C' }]}>Approve with fingerprint</Text>
+          </Pressable>
         </View>
       ) : null}
-      {state ? <Text style={{ color: C.text, marginHorizontal: 22, marginTop: 14, fontSize: 14 }}>{state}</Text> : null}
-    </ScrollView>
+    </View>
   );
 }
 
@@ -296,4 +336,9 @@ const s = StyleSheet.create({
   badge: { borderRadius: 999, paddingHorizontal: 10, paddingVertical: 4, alignSelf: 'flex-start' },
   check: { flexDirection: 'row', gap: 12, paddingVertical: 12, alignItems: 'flex-start' },
   dot: { width: 10, height: 10, borderRadius: 5, marginTop: 4 },
+  stripe: { width: 4, borderRadius: 2, marginRight: 14 },
+  topbar: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', paddingHorizontal: 16, paddingVertical: 10 },
+  round: { width: 40, height: 40, borderRadius: 20, backgroundColor: C.card, borderWidth: 1, borderColor: C.line, alignItems: 'center', justifyContent: 'center' },
+  actions: { flexDirection: 'row', gap: 10, paddingHorizontal: 16, paddingTop: 10, paddingBottom: 12, borderTopWidth: 1, borderTopColor: C.line, backgroundColor: 'rgba(7,10,18,0.92)' },
+  ghost: { flex: 1, marginTop: 0, backgroundColor: 'transparent', borderWidth: 1, borderColor: C.red },
 });

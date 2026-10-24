@@ -13,6 +13,8 @@ from difflib import SequenceMatcher
 # (scripts/usl_northwind.sql). Its vendors table is already federated with GLEIF.
 DB = "lightning.metastore.humankey.northwind"
 APPROVAL_THRESHOLD = 10000.0
+# Clean payments below this pay themselves; from here to APPROVAL_THRESHOLD a paired phone may approve.
+AUTO_LIMIT = 4000.0
 
 CATALOG = {
     "invoice_header": "Invoice amount, PO reference, payee account (last 4) and the e-mail it came with.",

@@ -82,6 +82,11 @@ class RiskTest(unittest.TestCase):
         d = Risk.decide({"proposal": "clear"}, CLEAN, [], self.PASS, [])
         self.assertEqual((d["proposal"], d["route"]), ("clear", "QUEUED_AUTO"))
 
+    def test_mid_size_clean_payment_needs_a_person(self):
+        f = dict(CLEAN, invoice_header=dict(CLEAN["invoice_header"], facts=dict(CLEAN["invoice_header"]["facts"], amount=7000.0)))
+        d = Risk.decide({"proposal": "clear"}, f, [], self.PASS, [])
+        self.assertEqual((d["proposal"], d["route"]), ("clear", "AWAITING_KEY"))
+
     def test_large_clean_payment_needs_key(self):
         f = dict(CLEAN, invoice_header=dict(CLEAN["invoice_header"], facts={"amount": 12000.0}))
         self.assertEqual(Risk.decide({"proposal": "clear"}, f, [], self.PASS, [])["route"], "AWAITING_KEY")
