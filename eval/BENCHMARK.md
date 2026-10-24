@@ -64,3 +64,33 @@ A = AP rule without AI (PO matches and amount under the limit: pay). B = agent a
 Sent to a person: 12 frauds, 10 clean over the limit, 2 clean under the limit (the model asked for caution).
 Under-limit clean invoices paid automatically: 4 of 6 (before: 14 of 23). No "unknown receipt" escalations.
 Two companies is a small sample.
+
+## Approval lanes with the phone tier (auto limit 4,000)
+
+Since this run the gate has three lanes. Clean invoices under 4,000 pay themselves (the gate enforces the
+limit itself). From 4,000 to the 10,000 approval limit, a clean invoice that pays the vendor's last paid
+account (payment history through Zetaris) can be approved on a paired phone. Everything else needs the
+hardware key. The saved proposals above were re-routed with these rules, with no model calls:
+`python3 -m eval.tiers 101-105` and `python3 -m eval.tiers 108-109` (needs the `--keep` folders).
+
+Seeds 101-105:
+
+| lane | clean | fraud |
+|---|---|---|
+| auto | 8 | 0 |
+| phone | 14 | 0 |
+| key | 18 | 30 |
+| blocked | 0 | 10 |
+
+Held-out seeds 108-109:
+
+| lane | clean | fraud |
+|---|---|---|
+| auto | 1 | 0 |
+| phone | 5 | 0 |
+| key | 10 | 12 |
+| blocked | 0 | 4 |
+
+The remaining frauds (5 and 2) are invoices whose vendor is missing from the master; the agents never see
+them and the count witness on the key reports them. No fraud reaches the auto or phone lane. A phone
+approval is still a person: frauds paid with no human stay at 0.

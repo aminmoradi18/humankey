@@ -56,8 +56,7 @@ Before recording:
 Left out of the video (in the README): evidence drift downgrading a verdict, a replayed or tampered
 decision being refused, unplugged key failing closed, phone pairing lockout.
 
-## Numbers to confirm before recording
+## Numbers on screen
 
-The benchmark table must be re-run or re-scored with the $4,000 auto limit. Lane counts on the 7 saved
-seeds (scored offline from saved proposals, no model calls): auto 9, phone 19, key clean 28, key fraud 42,
-blocked 14, frauds on auto or phone 0.
+From eval/BENCHMARK.md. Frauds paid with no human: A 24, B 31, C 0 (seeds 101-105). Lanes on seeds 101-105:
+auto 8 clean, phone 14 clean, key 18 clean and 30 fraud, blocked 10 fraud. No fraud on auto or phone.
