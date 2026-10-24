@@ -135,9 +135,21 @@ deciding online / unauthorized / offline, 180 s timeout, typed refusals not retr
 `LLM_PROVIDER=meterless` with the Console URL and token. Nightshift ships for Windows, Mac and DGX; we build
 on Linux x86, so, as the Meterless team advised, we developed against NVIDIA models directly.
 
-**NVIDIA Nemotron does the thinking.** The Planner, Investigator and Guard run on Nemotron models (NVIDIA
-endpoints via OpenRouter in development; an open-weights Nemotron on the laptop's NVIDIA GPU locally).
-`logs/llm.jsonl` records which model answered every request.
+**NVIDIA Nemotron does the thinking.** Every model call in HumanKey goes to an NVIDIA Nemotron model, run on
+the laptop's own NVIDIA GPU (Quadro P3000, 6 GB) through Ollama, so invoice data never leaves the machine.
+
+| Agent | What it asks the model | Model | Calls in the benchmark | Mean time |
+|---|---|---|---|---|
+| Planner | which checks this payment needs | `nemotron-mini` (4.2B, Q4_K_M) | 112 | 3.9 s |
+| Investigator | claims with receipt citations, and a proposal | `nemotron-mini` | 224 | 8.0 s |
+| Guard | does the invoice text try to instruct the AI | `nemotron-mini` | 112 | 1.4 s |
+| Critic, Risk, Reporter, gate | deterministic code, no model: the model may add caution, never remove it | none | | |
+
+Receipt log: every request is a line in `logs/llm.jsonl` with the agent, the provider, the model that
+answered, the time and the token counts (and, through Nightshift, the routed model and its receipt). The
+logs of the seven benchmark companies are committed in [`evidence/llm/`](evidence/llm/): 448 calls, all
+answered by `nemotron-mini`. Earlier in development we used hosted Nemotron through OpenRouter until its
+free quota ran out.
 
 ## Honest limits
 
