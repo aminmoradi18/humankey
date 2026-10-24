@@ -11,7 +11,7 @@
     },
     "android": {
       "adaptiveIcon": {
-        "backgroundColor": "#0B0F1A",
+        "backgroundColor": "#2283D8",
         "foregroundImage": "./assets/android-icon-foreground.png",
         "backgroundImage": "./assets/android-icon-background.png",
         "monochromeImage": "./assets/android-icon-monochrome.png"
@@ -29,7 +29,16 @@
         {
           "faceIDPermission": "HumanKey uses Face ID to confirm payment approvals."
         }
+      ],
+      [
+        "expo-splash-screen",
+        {
+          "image": "./assets/splash-icon.png",
+          "imageWidth": 200,
+          "backgroundColor": "#0E1621"
+        }
       ]
-    ]
+    ],
+    "backgroundColor": "#0E1621"
   }
 }

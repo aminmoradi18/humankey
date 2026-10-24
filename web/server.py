@@ -21,6 +21,7 @@ from agent.agents import SOFT_CHECKS
 from agent.world import World
 from common.jsonl import append, read
 from gate.devices import EmulatorDevice, PhoneDevice, open_device
+from agent.tools import APPROVAL_THRESHOLD, AUTO_LIMIT
 from gate.main import STATE, Gate, approval_tier, enroll_phone, load_last_paid
 
 PORT = int(os.environ.get("WEB_PORT", "8700"))
@@ -64,6 +65,25 @@ def tiers():
         last_paid.update(load_last_paid())
     props = json.loads((STATE / "proposals.json").read_text()) if (STATE / "proposals.json").exists() else {}
     return {inv: approval_tier(p, last_paid) for inv, p in props.items() if p["route"] == "AWAITING_KEY"}
+
+
+def phone_devices():
+    """What the app's Profile tab shows: who may approve what, and the trusted devices (ids only)."""
+    devices = json.loads((STATE / "devices.json").read_text()) if (STATE / "devices.json").exists() else {}
+    counters = json.loads((STATE / "counters.json").read_text()) if (STATE / "counters.json").exists() else {}
+    ledger = read("ledger", STATE)
+    by = {}
+    for x in ledger:
+        who = x.get("released_by", "")
+        kind = "auto" if who.startswith("policy") else "phone" if who.startswith("phone") else "key"
+        by[kind] = by.get(kind, 0) + 1
+    out = []
+    for dev in sorted(devices):
+        kind = "phone" if dev.startswith("phone-") else "emulator" if dev == "emulator" else "key"
+        out.append({"id": dev, "kind": kind, "counter": counters.get(dev, 0),
+                    "active": (kind == "phone") or (kind == "emulator") == (DEVICE_KIND == "emulator")})
+    return {"device_kind": DEVICE_KIND, "devices": out, "paid": by,
+            "limits": {"auto": AUTO_LIMIT, "phone": APPROVAL_THRESHOLD}}
 
 
 def phone_queue():
@@ -163,6 +183,8 @@ class Handler(BaseHTTPRequestHandler):
             return self._send(200, state())
         if self.path == "/api/phone/queue":
             return self._send(200, phone_queue())
+        if self.path == "/api/phone/devices":
+            return self._send(200, phone_devices())
         self._send(404, {"error": "not found"})
 
     def do_OPTIONS(self):

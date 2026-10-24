@@ -26,6 +26,9 @@ async function call<T>(path: string, body?: object): Promise<T> {
 }
 
 export const queue = () => call<Queue>('/api/phone/queue');
+export type Device = { id: string; kind: 'key' | 'phone' | 'emulator'; counter: number; active: boolean };
+export type Devices = { device_kind: string; devices: Device[]; paid: Record<string, number>; limits: { auto: number; phone: number } };
+export const devices = () => call<Devices>('/api/phone/devices');
 export const pair = (code: string, id: string, pub: string) => call('/api/phone/pair', { code, id, pub });
 export const release = (invoice_id: string) => call('/api/phone/release', { invoice_id });
 export const decide = (msg: object) => call('/api/phone/decision', msg);
