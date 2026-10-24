@@ -339,6 +339,22 @@ void show(JsonDocument &in) {
     return;
   }
 
+  // Which NVIDIA model reasoned about this payment, read from the contract bytes the key signs.
+  JsonArray models = k["evidence"]["ai"]["models"].as<JsonArray>();
+  if (!models.isNull() && models.size()) {
+    String body = "";
+    int shown = 0;
+    for (JsonVariant m : models) {
+      if (shown++ == 2) break;
+      body += String((const char *)(m | "")).substring(0, 21) + "\n";
+    }
+    long calls = k["evidence"]["ai"]["calls"] | 0L;
+    body += String(calls) + " AI calls\nsigned into this OK";
+    led(0, 10, 30);
+    screen("CHECKED BY NVIDIA", body, "", false);
+    delay(5000);  // long enough to read: it is part of what the person approves
+  }
+
   String warn = "";
   int nwarn = 0;
   if (exp >= 0 && cov >= 0 && cov < exp) {

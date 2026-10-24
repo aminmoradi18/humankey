@@ -6,7 +6,8 @@ import { getItem, setItem } from './store';
 export type Finding = { check: string; signal: string; summary: string };
 export type Item = {
   invoice_id: string; vendor_id: string; amount: number; risk: string; tier: 'phone' | 'hardware';
-  key_text: string; explanation: string; last_paid_match: boolean | null; subject: string; findings: Finding[]; done: string | null;
+  key_text: string; explanation: string; last_paid_match: boolean | null;
+  ai?: { models?: string[]; calls?: number }; subject: string; findings: Finding[]; done: string | null;
 };
 export type Queue = { items: Item[]; pending: (import('./key').Pending & { invoice_id: string }) | null; busy: string | null };
 

@@ -598,6 +598,12 @@ function Detail({ item, onBack, refresh }: { item: Item; onBack: () => void; ref
           </View>
           <Text style={{ color: C.text, fontSize: 15, lineHeight: 22, marginTop: 6 }}>{st.text}</Text>
           {item.explanation ? <Text style={{ color: C.dim, fontSize: 14, lineHeight: 20, marginTop: 8 }}>Agent: {item.explanation}</Text> : null}
+          {item.ai?.models?.length ? (
+            <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6, marginTop: 10 }}>
+              <Ionicons name="hardware-chip" size={15} color="#76B900" />
+              <Text style={{ color: C.dim, fontSize: 13 }}>Checked by NVIDIA {item.ai.models.join(', ')} · {item.ai.calls} AI calls, signed into your approval</Text>
+            </View>
+          ) : null}
         </View>
         <Section title="WHY · CHECKS RUN THROUGH ZETARIS">
           {findings.map((f, i) => (

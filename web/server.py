@@ -98,7 +98,7 @@ def phone_queue():
         # The vendor master can be edited by an attacker; the payment history is what was actually paid.
         same = None if not (last and hdr.get("iban_hash")) else last == hdr["iban_hash"]
         out.append({"invoice_id": p["invoice_id"], "vendor_id": p["vendor_id"], "amount": p["amount"],
-                    "last_paid_match": same,
+                    "last_paid_match": same, "ai": p.get("ai") or {},
                     "risk": p["risk"], "tier": t[p["invoice_id"]], "key_text": p["key_text"],
                     "explanation": p.get("explanation", ""), "subject": hdr.get("subject", ""),
                     "findings": [{"check": f["check"], "signal": f["signal"], "summary": f["summary"]}

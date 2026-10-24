@@ -13,6 +13,7 @@ from agent.tools import DB, Tools
 from common.env import ROOT
 from agent.world import World
 from common.jsonl import canonical, now_iso, read
+from gate.crypto import sha256
 from llm.provider import LLM
 from zetaris.client import ZetarisClient
 
@@ -24,9 +25,22 @@ def receipts_for(findings):
     return [r for r in read("receipts") if r["receipt_id"] in ids]
 
 
+def ai_summary(calls):
+    """Which models answered for this invoice, and a digest of the exact prompts they answered.
+
+    It travels into the payment contract, so the person's signature also covers which NVIDIA model
+    reasoned about the payment.
+    """
+    models = sorted({m.rsplit("/", 1)[-1] for _, m, _ in calls})
+    return {"models": models, "calls": len(calls),
+            "by_agent": {a: sorted({m.rsplit("/", 1)[-1] for b, m, _ in calls if b == a}) for a, _, _ in calls},
+            "prompts_sha256": sha256(canonical([k for _, _, k in calls]))}
+
+
 def investigate(invoice_id, z, llm, world=None, run_id="run", max_revisions=1):
     tools = Tools(z)
     planner, inv, guard, critic = Planner(llm), Investigator(llm, tools), Guard(llm), Critic(z)
+    first_call = len(getattr(llm, "calls", []))
     event("start", invoice_id)
 
     header = tools.run("invoice_header", invoice_id)
@@ -74,6 +88,7 @@ def investigate(invoice_id, z, llm, world=None, run_id="run", max_revisions=1):
         "findings": findings, "injection_flags": flags, "integrity": integrity,
         "critic": {"verdict": verdict, "reasons": reasons, "revisions": revisions},
         "plan": plan, "key_text": key_text, "memory": remembered, "first_draft": first_draft,
+        "ai": ai_summary(getattr(llm, "calls", [])[first_call:]),
     }
     event("decision", invoice_id, agent="risk", **decision, key_text=key_text)
     if world and vendor:

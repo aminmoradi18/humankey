@@ -52,6 +52,7 @@ def normalize_meterless_url(url):
 
 class LLM:
     def __init__(self, provider=None, log_root=None):
+        self.calls = []  # (agent, model that answered, prompt hash) of every answer, in order
         load_env()
         self.provider = provider or ("replay" if flag("SAMPLE_MODE") else os.environ.get("LLM_PROVIDER", "openrouter"))
         self.log_root = log_root
@@ -134,6 +135,7 @@ class LLM:
             saved = json.loads(path.read_text())
             append("llm", {"agent": agent, "purpose": purpose, "provider": "replay",
                            "model": saved["model"], "prompt_sha": key, "ms": 0, "ok": True}, self.log_root)
+            self.calls.append((agent, saved["model"], key))
             return saved["text"]
         errors = []
         for model in self.models:
@@ -163,6 +165,7 @@ class LLM:
                            **({"receipt": receipt} if receipt else {})}, self.log_root)
             CACHE.mkdir(parents=True, exist_ok=True)
             path.write_text(canonical({"model": used, "text": text}))
+            self.calls.append((agent, used, key))
             return text
         raise LLMError("all models failed: " + " | ".join(errors))
 

@@ -26,7 +26,7 @@ Before recording:
 | 7 | 1:08 | Phone app: INV0001, $4,315, "Clean · phone can approve" | fingerprint, approve | Between four and ten thousand dollars, a clean invoice is one tap on the phone. |
 | 8 | 1:20 | Ledger line: released by phone | none | The gate checked the phone's own signature. The phone cannot approve anything larger. |
 | 9 | 1:30 | Phone app: INV0002 $75,600 "Risk found", INV0010 "Account differs" | scroll | Anything bigger, or anything wrong, needs the hardware key. Each one says **why** it is here. |
-| 10 | 1:40 | Key: CLEAN - OVER LIMIT, green LED, INV0011 $12,488 | press YES | A clean big invoice. The key shows exactly what I sign. |
+| 10 | 1:40 | Key: first `CHECKED BY NVIDIA / nemotron-mini / 4 AI calls / signed into this OK`, then CLEAN - OVER LIMIT, green LED, INV0011 $12,488 | press YES | A clean big invoice. The key tells me which NVIDIA model checked it, and that goes into my signature. Then it shows exactly what I sign. |
 | 11 | 1:52 | Key: YES, signed. Ledger: released by human key | none | The key signs on the board. The private key never leaves it. |
 | 12 | 2:00 | Web: INV0010 $20,780, every check passed | none | This one looks clean. The vendor master says the account is on file. |
 | 13 | 2:08 | Key: !! KEY WARNING !! NEW ACCOUNT, last OK'd | press NO | **Why** does the key stop it? It remembers the last account I approved. Someone edited the vendor master. |
@@ -40,6 +40,7 @@ Before recording:
 | 18 (opt) | 3:22 | BENCHMARK.md table, A / B / C | none | We tested on generated companies with planted frauds. Frauds paid with no human: zero. |
 | 19 (opt) | 3:32 | Before / after table, held-out seeds | none | We publish our failures and the fix, measured on companies we did not tune on. |
 | 20 | 3:44 | Key, phone and laptop together | none | Zetaris keeps the receipts. Meterless keeps the memory. A human holds the key. |
+| 21 | 3:52 | End card, 6 s, green ticks, no voice: "Also built and tested: read-only Zetaris user (Zetaris refuses its writes) · receipt freshness · 5 Nemotron sizes compared, 0 frauds paid by any · phone notifications · night and morning Scout contracts · pairing lockout · replay and tamper refusal · fail-closed when the key is unplugged · 52 tests" | none | (none) |
 
 ## Feature checklist (every item must appear once)
 
@@ -64,6 +65,8 @@ Before recording:
 - [ ] Meterless World Model shared vendor context (scene 6)
 - [ ] Meterless H-MEM, and what it may never settle (scene 17)
 - [ ] Sponsor tech named again at the close (scene 20)
+- [ ] NVIDIA model shown on the key and signed into the approval (scene 10)
+- [ ] End card with everything not shown (scene 21)
 
 ## Screenshot list (slides, README, and spare shots for the edit)
 

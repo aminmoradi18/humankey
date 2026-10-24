@@ -70,7 +70,8 @@ def issue(p, secret, tier="hardware", parent=None, reason=None, approvals=(), st
         "toolPlan": [{"tool": CAPABILITY, "args": {"invoice_id": p["invoice_id"]}}],
         "modelProfile": "none",
         "scope": {"user": "ap-manager", "surface": "humankey", "capabilities": [CAPABILITY]},
-        "evidence": dict(evidence(p), witness={"exp": w.get("exp", -1), "cov": w.get("cov", -1)}),
+        "evidence": dict(evidence(p), witness={"exp": w.get("exp", -1), "cov": w.get("cov", -1)},
+                         ai=p.get("ai") or {}),
         "issuedAt": iso(now), "expiresAt": iso(now + TTL_S),
         "registryVersion": REGISTRY_VERSION, "policyPackVersion": POLICY_VERSION, "signedBy": "scout",
     }
