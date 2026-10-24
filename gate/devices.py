@@ -7,6 +7,7 @@
 """
 import json
 import os
+import queue
 from pathlib import Path
 import sys
 import time
@@ -159,6 +160,37 @@ class SerialDevice:
         msg = self._read("decision", time.time() + 2 * self.timeout + 10)
         return msg or {"t": "decision", "req": req, "d": "timeout", "counter": None, "th": None,
                        "id": self.device_id}
+
+
+class PhoneDevice:
+    """A paired phone (mobile/ app). It holds its own Ed25519 key; this side only relays.
+
+    show() publishes the request; the phone fetches it, shows it, signs on the phone and posts
+    the decision back through answer(). The gate verifies like any device, and refuses a phone
+    signature on anything but a phone-tier contract.
+    """
+
+    def __init__(self, timeout=120):
+        self.timeout = timeout
+        self.pending = None
+        self.answers = queue.Queue()
+
+    def show(self, req, text, contract_sha, w=None, acct=None):
+        self.pending = {"req": req, "text": text, "c": contract_sha,
+                        "exp": (w or {}).get("exp", -1), "cov": (w or {}).get("cov", -1)}
+        try:
+            msg = self.answers.get(timeout=self.timeout)
+        except queue.Empty:
+            msg = {"d": "timeout", "id": None}
+        finally:
+            self.pending = None
+        return {"t": "decision", "req": req, "acct": "none", "ah": "", "warned": 0, **msg}
+
+    def answer(self, msg):
+        if self.pending is None or msg.get("req") != self.pending["req"]:
+            return False
+        self.answers.put({k: msg.get(k) for k in ("d", "id", "counter", "th", "sig", "exp", "cov")})
+        return True
 
 
 def open_device(kind=None, **kw):

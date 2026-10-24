@@ -11,6 +11,7 @@ emulator's private key stays in this process, like the board's stays on the boar
 import json
 import os
 import queue
+import secrets
 import threading
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
@@ -19,10 +20,11 @@ from common.env import ROOT, load_env
 from agent.agents import SOFT_CHECKS
 from agent.world import World
 from common.jsonl import append, read
-from gate.devices import EmulatorDevice, open_device
-from gate.main import STATE, Gate
+from gate.devices import EmulatorDevice, PhoneDevice, open_device
+from gate.main import STATE, Gate, approval_tier, enroll_phone, load_last_paid
 
 PORT = int(os.environ.get("WEB_PORT", "8700"))
+HOST = os.environ.get("WEB_HOST", "127.0.0.1")  # 0.0.0.0 to reach it from a real phone on the LAN
 HERE = Path(__file__).resolve().parent
 
 
@@ -47,8 +49,39 @@ class WebEmulator(EmulatorDevice):
 load_env()
 DEVICE_KIND = os.environ.get("DEVICE", "emulator")
 device = WebEmulator() if DEVICE_KIND == "emulator" else open_device("serial")
+phone = PhoneDevice()
+PAIR_CODE = f"{secrets.randbelow(10**6):06d}"  # printed in the terminal; one phone pairs with it
+pairing = {"used": False, "wrong": 0}
+PAIR_TRIES = 5
+CORS = os.environ.get("PHONE_WEB_CORS") == "1"  # only for the app's web build (screenshots), never on a LAN
+last_paid = {}
 gate_lock = threading.Lock()
 busy = {"invoice": None}
+
+
+def tiers():
+    if not last_paid:
+        last_paid.update(load_last_paid())
+    props = json.loads((STATE / "proposals.json").read_text()) if (STATE / "proposals.json").exists() else {}
+    return {inv: approval_tier(p, last_paid) for inv, p in props.items() if p["route"] == "AWAITING_KEY"}
+
+
+def phone_queue():
+    """What the phone app lists: everything waiting for a person, and which device may approve it."""
+    st, t = state(), tiers()
+    out = []
+    for p in st["items"]:
+        if p["invoice_id"] not in t:
+            continue
+        hdr = p["findings"].get("invoice_header", {}).get("facts", {})
+        out.append({"invoice_id": p["invoice_id"], "vendor_id": p["vendor_id"], "amount": p["amount"],
+                    "risk": p["risk"], "tier": t[p["invoice_id"]], "key_text": p["key_text"],
+                    "explanation": p.get("explanation", ""), "subject": hdr.get("subject", ""),
+                    "findings": [{"check": f["check"], "signal": f["signal"], "summary": f["summary"]}
+                                 for f in p["findings"].values()],
+                    "done": (p.get("paid") or {}).get("released_by") or (p.get("gate_event") or {}).get("kind")})
+    pend = phone.pending and {**phone.pending, "invoice_id": busy["invoice"]}
+    return {"items": out, "pending": pend, "busy": busy["invoice"]}
 
 
 def state():
@@ -81,7 +114,8 @@ def release(invoice_id):
     with gate_lock:
         busy["invoice"] = invoice_id
         try:
-            result = Gate(device, allow_emulator=(DEVICE_KIND == "emulator")).process(p)
+            result = Gate(device, allow_emulator=(DEVICE_KIND == "emulator"), phone=phone,
+                          last_paid=last_paid or None).process(p)
         finally:
             busy["invoice"] = None
     # The human's answer grades any memory that settled a finding (H-MEM feedback).
@@ -112,6 +146,8 @@ class Handler(BaseHTTPRequestHandler):
         self.send_response(code)
         self.send_header("Content-Type", ctype)
         self.send_header("Content-Length", str(len(data)))
+        if CORS and self.path.startswith("/api/phone/"):
+            self.send_header("Access-Control-Allow-Origin", "*")  # the app's web build runs on another port
         self.end_headers()
         self.wfile.write(data)
 
@@ -120,7 +156,17 @@ class Handler(BaseHTTPRequestHandler):
             return self._send(200, (HERE / "index.html").read_bytes(), "text/html; charset=utf-8")
         if self.path == "/api/state":
             return self._send(200, state())
+        if self.path == "/api/phone/queue":
+            return self._send(200, phone_queue())
         self._send(404, {"error": "not found"})
+
+    def do_OPTIONS(self):
+        self.send_response(204)
+        if CORS and self.path.startswith("/api/phone/"):
+            self.send_header("Access-Control-Allow-Origin", "*")
+            self.send_header("Access-Control-Allow-Methods", "GET, POST")
+            self.send_header("Access-Control-Allow-Headers", "Content-Type")
+        self.end_headers()
 
     def do_POST(self):
         n = int(self.headers.get("Content-Length") or 0)
@@ -136,6 +182,30 @@ class Handler(BaseHTTPRequestHandler):
             if check not in SOFT_CHECKS or not content:
                 return self._send(400, {"error": "pick a check this answer explains and write the reason"})
             return self._send(200, remember(body.get("invoice_id", ""), check, content))
+        if self.path == "/api/phone/pair":
+            pid, pub = str(body.get("id", "")), str(body.get("pub", ""))
+            if pairing["used"] or pairing["wrong"] >= PAIR_TRIES:
+                return self._send(403, {"error": "pairing closed: restart the server for a new code"})
+            if not secrets.compare_digest(str(body.get("code", "")), PAIR_CODE):
+                pairing["wrong"] += 1
+                return self._send(403, {"error": "wrong pairing code"})
+            if not pid.startswith("phone-") or len(pub) != 44:
+                return self._send(400, {"error": "bad phone id or key"})
+            enroll_phone(pid, pub)
+            pairing["used"] = True
+            return self._send(200, {"ok": True, "id": pid})
+        if self.path == "/api/phone/release":
+            inv = body.get("invoice_id", "")
+            if tiers().get(inv) != "phone":
+                return self._send(403, {"error": "this payment needs the hardware key"})
+            if gate_lock.locked():
+                return self._send(409, {"error": f"busy with {busy['invoice']}"})
+            threading.Thread(target=release, args=(inv,), daemon=True).start()
+            return self._send(202, {"ok": True})
+        if self.path == "/api/phone/decision":
+            if not phone.answer(body):
+                return self._send(409, {"error": "nothing waiting for this phone"})
+            return self._send(200, {"ok": True})
         if self.path == "/api/emulator" and isinstance(device, WebEmulator):
             if device.pending is None:
                 return self._send(409, {"error": "nothing on the key"})
@@ -145,5 +215,8 @@ class Handler(BaseHTTPRequestHandler):
 
 
 if __name__ == "__main__":
-    print(f"HumanKey on http://127.0.0.1:{PORT}  (device: {DEVICE_KIND})")
-    ThreadingHTTPServer(("127.0.0.1", PORT), Handler).serve_forever()
+    if HOST not in ("127.0.0.1", "localhost") and DEVICE_KIND == "emulator":
+        # The browser emulator approves anything; it must never be reachable from the network.
+        raise SystemExit("WEB_HOST beyond localhost needs DEVICE=serial (the hardware key)")
+    print(f"HumanKey on http://{HOST}:{PORT}  (device: {DEVICE_KIND})  phone pairing code: {PAIR_CODE}")
+    ThreadingHTTPServer((HOST, PORT), Handler).serve_forever()

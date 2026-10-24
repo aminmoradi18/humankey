@@ -8,6 +8,7 @@ means one line in gate/state/ledger.jsonl.
 Usage:
   python3 -m gate.main enroll-emulator          register the emulator's public key
   python3 -m gate.main enroll-serial            register the hardware key's public key (USB)
+  python3 -m gate.main enroll-phone ID PUB      register a paired phone (normally done by the web pairing code)
   python3 -m gate.main import-accounts          load paid-to accounts into the key's own ledger
   python3 -m gate.main run [--allow-emulator]   process gate/state/proposals.json
   python3 -m gate.main forge INV0008            try to approve without the device (must be refused)
@@ -27,7 +28,34 @@ from gate.devices import EmulatorDevice, open_device
 
 STATE = Path(os.environ.get("HUMANKEY_STATE", ROOT / "gate" / "state"))
 TTL_S = 300
-POLICY_VERSION = "humankey-policy-1"
+POLICY_VERSION = "humankey-policy-2"
+PHONE_LIMIT = 10000.0
+LAST_PAID_SQL = "SELECT vendor_id, iban_hash, iban_last4, paid_at FROM northwind_erp.payments ORDER BY paid_at"
+
+
+def approval_tier(p, last_paid):
+    """'phone' only when nothing at all points at risk; everything else needs the hardware key.
+
+    The phone has no private account ledger, so the gate itself checks the one thing the key's
+    ledger would: the invoice pays the account this vendor was last actually paid to (payment
+    history, not the vendor master, which an attacker may have edited).
+    """
+    hdr = p["findings"].get("invoice_header", {}).get("facts", {})
+    clean = (p["route"] == "AWAITING_KEY" and (p.get("amount") or 0) < PHONE_LIMIT
+             and not any(f.get("signal") in ("risk_up", "unknown") for f in p["findings"].values())
+             and not p.get("injection_flags")
+             and bool(hdr.get("iban_hash")) and last_paid.get(p["vendor_id"]) == hdr.get("iban_hash"))
+    return "phone" if clean else "hardware"
+
+
+def load_last_paid():
+    """vendor -> iban hash of the last payment, read through Zetaris. Empty on failure (all key)."""
+    try:
+        from zetaris.client import ZetarisClient
+        rows, _ = ZetarisClient().query(LAST_PAID_SQL, purpose="phone tier: last paid account", agent="gate")
+    except Exception:
+        return {}
+    return {r["vendor_id"]: r["iban_hash"] for r in rows or []}
 
 
 def load_json(path, default):
@@ -35,7 +63,7 @@ def load_json(path, default):
 
 
 class Gate:
-    def __init__(self, device=None, allow_emulator=False, state=STATE):
+    def __init__(self, device=None, allow_emulator=False, state=STATE, phone=None, last_paid=None):
         load_env()
         self.state = state
         state.mkdir(parents=True, exist_ok=True)
@@ -44,9 +72,11 @@ class Gate:
         self.counters = load_json(state / "counters.json", {})
         self.device = device
         self.allow_emulator = allow_emulator
+        self.phone = phone
+        self.last_paid = last_paid
 
     # -- contract ------------------------------------------------------
-    def issue_contract(self, p, parent=None):
+    def issue_contract(self, p, parent=None, tier="hardware"):
         now = time.time()
         c = {
             "contractId": "ctr_" + uuid.uuid4().hex[:12], "parentId": parent, "traceId": p["invoice_id"],
@@ -55,7 +85,7 @@ class Gate:
                                       "amount": p["amount"]}},
             "risk": {"level": p["risk"], "flags": [f["check"] for f in p["findings"].values()
                                                     if f["signal"] in ("risk_up", "unknown")],
-                     "approvals": ["hardware-confirm"]},
+                     "approvals": [tier + "-confirm"]},
             "scope": {"user": "ap-manager", "surface": "humankey", "capabilities": ["payment.release"]},
             "issuedAt": int(now), "expiresAt": int(now + TTL_S), "policyPackVersion": POLICY_VERSION,
             "signedBy": "gate",
@@ -73,6 +103,8 @@ class Gate:
             return f"unknown device {dev!r}"
         if dev == "emulator" and not self.allow_emulator:
             return "emulator_not_trusted"
+        if dev.startswith("phone-") and contract["risk"]["approvals"] != ["phone-confirm"]:
+            return "a phone cannot approve a hardware-key payment"
         if not contract_ok(contract, self.secret):
             return "contract signature invalid"
         if time.time() > contract["expiresAt"]:
@@ -114,30 +146,45 @@ class Gate:
         if p["route"] == "QUEUED_AUTO":
             self.execute(p, "policy:auto (clear, low risk, under threshold)")
             return "EXECUTED"
-        contract = self.issue_contract(p)
+        tier = "hardware"
+        if self.phone is not None and any(d.startswith("phone-") for d in self.devices):
+            if self.last_paid is None:
+                self.last_paid = load_last_paid()
+            tier = approval_tier(p, self.last_paid)
+        device = self.phone if tier == "phone" else self.device
+        contract = self.issue_contract(p, tier=tier)
         c_sha = sha256(canonical(contract))
-        event("sent_to_device", inv, agent="gate", contract=contract["contractId"], text=p["key_text"])
+        event("sent_to_device", inv, agent="gate", contract=contract["contractId"], text=p["key_text"], tier=tier)
         w = p.get("witness")
         hdr = p["findings"].get("invoice_header", {}).get("facts", {})
         acct = {"v": p["vendor_id"], "h": hdr.get("iban_hash", ""), "l4": hdr.get("iban_last4", "")} \
             if hdr.get("iban_hash") else None
-        msg = self.device.show(contract["contractId"], p["key_text"], c_sha, w=w, acct=acct)
+        msg = device.show(contract["contractId"], p["key_text"], c_sha, w=w, acct=acct)
         reason = self.verify(contract, p["key_text"], msg, sent=(w["exp"], w["cov"]) if w else (-1, -1))
         if msg.get("warned"):
             event("key_warning", inv, agent="key", count=f"{msg.get('cov')}/{msg.get('exp')}",
                   account=msg.get("acct"), decision=msg.get("d"))
         self._save_counter(msg.get("id"), msg.get("counter"))
         if reason is None:
-            approval = {"kind": "hardware-confirm", "device_id": msg["id"], "contract_sha256": c_sha,
+            approval = {"kind": tier + "-confirm", "device_id": msg["id"], "contract_sha256": c_sha,
                         "text_sha256": msg["th"], "decision": "approve", "counter": msg["counter"],
                         "count_witness": {"expected": msg.get("exp"), "checked": msg.get("cov")},
                         "account_on_key": msg.get("acct"),
                         "signature": msg["sig"], "contract": contract}
-            self.execute(p, f"human key ({msg['id']})", approval)
+            self.execute(p, f"{'phone' if tier == 'phone' else 'human key'} ({msg['id']})", approval)
             return "EXECUTED"
         state = {"reject": "REJECTED", "timeout": "TIMEOUT"}.get(msg.get("d"), "REFUSED")
         event(state.lower(), inv, agent="gate", reason=reason)
         return state if state != "REFUSED" else f"REFUSED ({reason})"
+
+
+def enroll_phone(phone_id, pub, state=STATE):
+    if not phone_id.startswith("phone-"):
+        raise ValueError("phone ids start with phone-")
+    devices = load_json(state / "devices.json", {})
+    devices[phone_id] = pub
+    state.mkdir(parents=True, exist_ok=True)
+    (state / "devices.json").write_text(canonical(devices))
 
 
 def main(argv):
@@ -160,13 +207,14 @@ def main(argv):
         STATE.mkdir(parents=True, exist_ok=True)
         (STATE / "devices.json").write_text(canonical(devices))
         print(f"enrolled {pong['id']} (counter {pong['counter']})")
+    elif cmd == "enroll-phone":
+        enroll_phone(argv[1], argv[2])
+        print(f"enrolled {argv[1]}")
     elif cmd == "import-accounts":
         # One-time: give the key the account each vendor was actually PAID to (payment history),
         # not the current vendor master; the person confirms the import on the key.
         from zetaris.client import ZetarisClient
-        rows, _ = ZetarisClient().query(
-            "SELECT vendor_id, iban_hash, iban_last4, paid_at FROM northwind_erp.payments ORDER BY paid_at",
-            purpose="account import from payment history", agent="gate")
+        rows, _ = ZetarisClient().query(LAST_PAID_SQL, purpose="account import from payment history", agent="gate")
         last = {}
         for r in rows:
             last[r["vendor_id"]] = {"v": r["vendor_id"], "h": r["iban_hash"], "l4": r["iban_last4"]}
