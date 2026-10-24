@@ -140,13 +140,16 @@ void storeAccount(const String &vendor, const String &hash, const String &last4)
 }
 
 // Two-colour SSD1306: rows 0-15 are yellow (title), rows 16-63 blue (body + footer).
-void screen(const String &title, const String &body, const String &footer) {
+// alert fills the yellow band and cuts the title out of it, so a warning shows from across the desk.
+void screen(const String &title, const String &body, const String &footer, bool alert = false) {
   if (!oledOk) return;
   oled.clearDisplay();
   oled.setTextSize(1);
-  oled.setTextColor(SSD1306_WHITE);
-  oled.setCursor(0, 4);
+  if (alert) oled.fillRect(0, 0, 128, 15, SSD1306_WHITE);
+  oled.setTextColor(alert ? SSD1306_BLACK : SSD1306_WHITE);
+  oled.setCursor((128 - 6 * (int)title.length()) / 2, 4);
   oled.print(title);
+  oled.setTextColor(SSD1306_WHITE);
   int y = 18, start = 0;
   while (start <= (int)body.length() && y <= 48) {
     int nl = body.indexOf('\n', start);
@@ -295,13 +298,20 @@ void show(JsonDocument &in) {
   String d = "approve";
   if (nwarn) {
     led(60, 0, 0);
-    screen("!! KEY WARNING", warn, "BT1=I SEE     BT2=NO");
+    screen("!! KEY WARNING !!", warn, "BT1=I SEE     BT2=NO", true);
     d = waitButton();  // approve here only means "I have seen the warning"
     delay(400);
   }
   if (d == "approve") {
-    led(24, 16, 0);
-    screen("HUMANKEY  #" + String(saved.counter + 1), text, "BT1=YES       BT2=NO");
+    // The last line is the agent's proposal and is part of the signed text. "PAY this?" means every
+    // check passed and the key is only asked because of the amount; anything else carries a risk.
+    bool clean = text.endsWith("PAY this?");
+    if (clean) led(0, 40, 0);
+    else led(60, 12, 0);
+    String title = clean ? "CLEAN - OVER LIMIT"
+                 : text.endsWith("BLOCK payment?") ? "!! BLOCK ADVISED !!"
+                 : text.indexOf("checks passed") >= 0 ? "! AGENT UNSURE !" : "! RISK - CHECK !";
+    screen(title, text, "BT1=YES       BT2=NO", !clean);
     d = waitButton();
   }
   saved.counter += 1;  // every decision moves the counter, signed or not
