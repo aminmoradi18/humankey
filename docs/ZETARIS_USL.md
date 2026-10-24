@@ -60,6 +60,31 @@ purchase order, amount history, split pattern, header), plus the coverage and da
 per run. A full run of 17 invoices makes about 370 Zetaris queries; the critic re-runs each one and
 compares result hashes before anything is approved.
 
+## 5. A least-privilege identity for the agents
+
+Following the permissions guide ("give each agent and application its own user", "separate building from
+reading"), `scripts/zetaris_agent_user.py` sets up a non-administrator user `humankey-agent` in a role
+`humankey_readonly` and then runs every check *as that user*, so the answers come from Zetaris and not
+from our own write guard. Result on the local edition 2.4.3.1 (24 Oct):
+
+| As the agent user | Expected | Zetaris |
+|---|---|---|
+| `SELECT` on the ERP datasource (granted) | allowed | allowed |
+| `INSERT` into the ERP | refused | refused: "does not have privileges to execute 'INSERT'" |
+| `CREATE LIGHTNING DATABASE` | refused | refused: "User is not permitted to run this command" |
+| `SELECT` on a USL table (granted) | allowed | **refused**: "does not have access to USL: `metastore`.`humankey`.invoices" |
+| `RUN DQ` on a USL table (granted) | allowed | **refused**, same message |
+
+Denied by default, and the write refusals are exactly what we want: defence in depth behind our own guard.
+The USL grant is the gap. We granted `SELECT ON USL NAMESPACE lightning.metastore.humankey.northwind`, on
+`lightning.metastore.humankey`, and on the single table, to the role and to the user, and ticked View on
+Unified Semantic Layer under Management > Permissions. `SHOW GRANT` lists all of them, yet the access
+check still refuses. The refusal names `metastore`.`humankey`.invoices, without the `lightning` prefix and
+the `northwind` model, while the grants are stored as `LIGHTNING.METASTORE.HUMANKEY.NORTHWIND.*`, so the
+two identifiers may simply never match. Another team reported the same message in the help channel. Until
+it is fixed our agents read the USL with the builder login, and the write guard plus the key approval stay
+the controls that matter; switching to the agent user is a credentials change.
+
 ## Reflection
 
 **How it saved time.** Without Zetaris, each check would need its own connector code for Postgres and
@@ -93,5 +118,8 @@ words, and the DQ results are a standing control that does not depend on the age
   `CACHE TABLE`) would make federated checks with public APIs fast without serving stale registry data
   forever. We left caching off in HumanKey: the critic re-runs every query to check it, and a cached
   re-run would match trivially.
+- A non-administrator user granted `SELECT` on a USL namespace or table is still refused ("does not have
+  access to USL"), while the same grants on a datasource work (section 5). Making USL grants effective would
+  let agents read the semantic layer with a read-only identity, as the permissions guide recommends.
 - `SHOW TABLES` being disabled in favour of `SHOW NAMESPACES OR TABLES IN …` surprised our first
   script; a hint in the error message pointing to the new form would save time.

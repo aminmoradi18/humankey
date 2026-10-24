@@ -104,7 +104,9 @@ every agent check reads the USL. **Data-quality rules** run on every pass: the f
 and rules flag vendors unknown to GLEIF and bank changes nobody verified. Details and our reflection on
 the USL: `docs/ZETARIS_USL.md`. All agent SQL goes through one
 function with a write guard: anything that is not a read needs a key approval, and `INVALIDATE CACHE` is never
-sent. Setup DDL: `scripts/register_zetaris_sources.sql`.
+sent. `scripts/zetaris_agent_user.py` sets up a separate non-admin Zetaris user for the agents and shows Zetaris
+itself refusing its writes; USL reads with that user are refused by a grant issue we report in
+`docs/ZETARIS_USL.md` section 5, so the agents still use the builder login for now. Setup DDL: `scripts/register_zetaris_sources.sql`.
 
 **Meterless engines, in working features** (`meterless/server.ts`, 127.0.0.1:8711):
 - **World Model** (reference engine): shared state between the agents. Each receipt becomes an observation
