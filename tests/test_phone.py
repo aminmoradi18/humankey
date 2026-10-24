@@ -152,3 +152,21 @@ class PairingTest(unittest.TestCase):
             server.pairing.update(saved)
             srv.shutdown()
             srv.server_close()
+
+
+class FatigueTest(unittest.TestCase):
+    def test_fourth_quick_phone_approval_goes_to_the_key(self):
+        from common.jsonl import append
+        from gate.main import phone_fatigue
+        tmp = Path(tempfile.mkdtemp())
+        self.assertIsNone(phone_fatigue(tmp))
+        for i in range(3):
+            append("ledger", {"invoice_id": f"INV{i}", "approval": {"kind": "phone-signature", "seconds_to_decide": 9}}, tmp)
+        self.assertEqual(phone_fatigue(tmp), "3 phone approvals in 10 minutes")
+
+    def test_reflex_approval_steps_up(self):
+        from common.jsonl import append
+        from gate.main import phone_fatigue
+        tmp = Path(tempfile.mkdtemp())
+        append("ledger", {"invoice_id": "INV1", "approval": {"kind": "phone-signature", "seconds_to_decide": 1.2}}, tmp)
+        self.assertEqual(phone_fatigue(tmp), "last phone approval took 1.2 s")

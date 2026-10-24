@@ -36,7 +36,7 @@ class KeyMemoryTest(unittest.TestCase):
     def test_gap_needs_acknowledgement_and_is_signed(self):
         result, _ = self.run_gate(proposal("INV9101", cov=15), ["approve", "approve"])
         self.assertEqual(result, "EXECUTED")
-        self.assertIn("1 of 16 NOT checked", self.asked[0])
+        self.assertIn("1 of 16 not in list", self.asked[0])
         rec = read("ledger", self.state)[0]["approval"]
         self.assertEqual(rec["count_witness"], {"expected": 16, "checked": 15})
 
@@ -74,3 +74,35 @@ class KeyMemoryTest(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+class MissingInvoiceTest(unittest.TestCase):
+    def test_key_names_the_missing_invoice_and_whether_it_was_rechecked(self):
+        from gate.devices import EmulatorDevice
+        from gate.main import Gate
+        state = Path(tempfile.mkdtemp())
+        dev = EmulatorDevice(script=["approve", "reject"])
+        asked = []
+        dev._ask = lambda text: (asked.append(text), dev.script.pop(0))[1]
+        (state / "devices.json").write_text(canonical({"emulator": dev.public_key()}))
+        p = proposal("INV9150", exp=17, cov=16)
+        p["witness"].update(miss=["INV0004"], recovered=["INV0004"])
+        Gate(dev, allow_emulator=True, state=state).process(p)
+        self.assertIn("INV0004 re-checked", asked[0])
+
+
+class NotInMasterTest(unittest.TestCase):
+    def test_vendor_missing_from_master_never_becomes_a_known_account(self):
+        from gate.devices import EmulatorDevice
+        from gate.main import Gate
+        state = Path(tempfile.mkdtemp())
+        os.environ["HUMANKEY_EMU_DIR"] = str(state / "emu")
+        dev = EmulatorDevice(script=["approve", "approve"])
+        asked = []
+        dev._ask = lambda text: (asked.append(text), dev.script.pop(0))[1]
+        (state / "devices.json").write_text(canonical({"emulator": dev.public_key()}))
+        p = proposal("INV9160", h="fake", l4="6666")
+        p["recovered"] = True
+        self.assertEqual(Gate(dev, allow_emulator=True, state=state).process(p), "EXECUTED")
+        self.assertIn("vendor NOT in master", asked[0])
+        self.assertNotIn("V013", dev._ledger()["accounts"])

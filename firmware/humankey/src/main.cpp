@@ -296,6 +296,7 @@ void show(JsonDocument &in) {
   String ah = pay["payee"]["iban_hash"] | "";
   String al4 = pay["payee"]["iban_last4"] | "";
   String shownSha = k["evidence"]["displaySha256"] | "";
+  bool inMaster = pay["payee"]["in_master"] | true;
   String first = text.substring(0, text.indexOf('\n') < 0 ? text.length() : text.indexOf('\n'));
   int dollar = first.indexOf(" $");
   String shownInv = dollar < 0 ? first : first.substring(0, dollar);
@@ -358,11 +359,26 @@ void show(JsonDocument &in) {
   String warn = "";
   int nwarn = 0;
   if (exp >= 0 && cov >= 0 && cov < exp) {
-    warn += String(exp - cov) + " of " + String(exp) + " NOT checked\n";
+    warn += String(exp - cov) + " of " + String(exp) + " not in list\n";
+    // name the missing invoices, and whether the agents were sent back to check them
+    JsonArray miss = k["evidence"]["witness"]["miss"].as<JsonArray>();
+    JsonArray back = k["evidence"]["witness"]["recovered"].as<JsonArray>();
+    int named = 0;
+    for (JsonVariant m : miss) {
+      if (named++ == 2) break;
+      String id = m | "";
+      bool rechecked = false;
+      for (JsonVariant b : back) if (id == String((const char *)(b | ""))) rechecked = true;
+      warn += id + (rechecked ? " re-checked\n" : " NOT checked\n");
+    }
     nwarn++;
   }
   if (exp >= 0 && ext.lastExpected > 0 && (uint32_t)exp < ext.lastExpected) {
     warn += "count fell " + String(ext.lastExpected) + "->" + String(exp) + "\n";
+    nwarn++;
+  }
+  if (!inMaster) {
+    warn += "vendor NOT in master\naccount not saved\n";
     nwarn++;
   }
   String acct = "none";
@@ -399,7 +415,7 @@ void show(JsonDocument &in) {
   saved.counter += 1;  // every decision moves the counter, signed or not
   if (d == "approve") {
     if (exp >= 0) ext.lastExpected = exp;
-    if (av.length() && (acct == "first" || acct == "new")) storeAccount(av, ah, al4);
+    if (inMaster && av.length() && (acct == "first" || acct == "new")) storeAccount(av, ah, al4);
   }
   save();
   String th = sha256Hex(text);

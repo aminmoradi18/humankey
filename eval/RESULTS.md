@@ -1,17 +1,17 @@
 # Evaluation
 
-- Frauds stopped before payment: **9 / 9** (2 blocked outright, 1 caught only by the count witness, the rest held for the human key)
+- Frauds stopped before payment: **9 / 9** (2 blocked outright, 0 caught only by the count witness, the rest held for the human key)
 - Clean invoices wrongly blocked: **0 / 8**; paid automatically: 3 (the others were over the approval threshold or escalated)
-- Proposal equals the label: 15 / 16
-- Critic send-backs: 16
-- Model calls: 64 ok, by model: `nemotron-mini` x64
+- Proposal equals the label: 16 / 17
+- Critic send-backs: 17
+- Model calls: 68 ok, by model: `nemotron-mini` x68
 
 | invoice | planted case | expected | proposal | route | result |
 |---|---|---|---|---|---|
 | INV0001 | ok | clear | clear | AWAITING_KEY | ok |
 | INV0002 | amount_anomaly | escalate | escalate | AWAITING_KEY | stopped |
 | INV0003 | new_iban_lookalike | block | block | BLOCKED | stopped |
-| INV0004 | orphan_vendor | escalate | - | - | never reached the agents; caught by the count witness on the key |
+| INV0004 | orphan_vendor | escalate | escalate | AWAITING_KEY | stopped |
 | INV0005 | ok | clear | clear | AWAITING_KEY | ok |
 | INV0006 | ok | clear | clear | QUEUED_AUTO | ok |
 | INV0007 | ok | clear | clear | AWAITING_KEY | ok |

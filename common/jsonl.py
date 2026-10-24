@@ -34,4 +34,12 @@ def read(name, root=None):
     p = (Path(root) if root else logs_dir()) / f"{name}.jsonl"
     if not p.exists():
         return []
-    return [json.loads(line) for line in p.read_text().splitlines() if line.strip()]
+    lines = [line for line in p.read_text().splitlines() if line.strip()]
+    out = []
+    for n, line in enumerate(lines):
+        try:
+            out.append(json.loads(line))
+        except ValueError:
+            if n != len(lines) - 1:  # only the last line can be half-written by a parallel worker
+                raise
+    return out

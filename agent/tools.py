@@ -86,6 +86,11 @@ class Tools:
                           f"FROM {DB}.vendors v JOIN {DB}.invoices i ON i.vendor_id = v.vendor_id "
                           f"WHERE i.invoice_id = :id", {"id": invoice_id}, "vendor vs GLEIF registry (USL)")
         if not rows:
+            inv, rc2 = self.header(invoice_id)
+            if inv and inv.get("vendor_id"):
+                return _f("vendor_registry", "risk_up",
+                          f"vendor {inv['vendor_id']} is not in the vendor master at all", {"vendor_id": inv["vendor_id"]},
+                          [rc, rc2])
             return _unknown("vendor_registry", [rc])
         v = rows[0]
         paid = int(_num(v["paid_count"]) or 0)

@@ -60,6 +60,17 @@ purchase order, amount history, split pattern, header), plus the coverage and da
 per run. A full run of 17 invoices makes about 370 Zetaris queries; the critic re-runs each one and
 compares result hashes before anything is approved.
 
+## 4b. A cross-table rule
+
+The command reference shows single-table rules only. We tested a cross-table one live: the invoice amount
+must match its purchase order (`invoice_matches_po`, in `scripts/setup_zetaris.py`). It works, with one trap.
+Written with unqualified columns, `EXISTS (SELECT 1 FROM purchase_orders p WHERE p.po_id = po_id …)`, the
+inner `po_id` binds to `purchase_orders` (normal SQL scoping), the condition is always true, and the rule
+passes every row. Qualified as `invoices.po_id` it does what it says. We proved it with a deliberately
+impossible tolerance: 16 of 17 invoices failed (the 17th has no PO), as they should. On the demo data the
+real rule finds no mismatch, so it stands as a control. A note in the docs that rule expressions may use
+subqueries, and that the rule's own columns should be qualified, would save the next team the trap.
+
 ## 5. A least-privilege identity for the agents
 
 Following the permissions guide ("give each agent and application its own user", "separate building from

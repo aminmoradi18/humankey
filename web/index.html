@@ -370,7 +370,7 @@ function render() {
     : x.route === "AWAITING_KEY" ? "A human must approve this on the key before any money moves." : "Auto-cleared by the agents; the gate still logs the release.";
   const receipt = (id) => { const r = rc[id]; if (!r) return "";
     return `<details class="rc" data-k="${esc(id)}"><summary>receipt <code>${esc(id)}</code> · ${esc(r.row_count)} rows · ${esc(r.status)} · ${esc((r.sources || []).join(", "))}</summary>
-      <pre>${esc(r.sql)}</pre><div class="rmeta"><span>sha256 ${esc(String(r.result_sha256 || "").slice(0, 16))}…</span><span class="${r.freshness === "live" ? "fresh" : ""}">${r.freshness === "live" ? "read live" : r.freshness === "recorded" ? "recorded replay" : esc(r.mode)}${r.rest_backed ? " · public registry API" : ""}</span><span>${esc(r.ran_at)}</span><span>${esc((r.sources || []).length)} source(s)</span></div></details>`; };
+      <pre>${esc(r.sql)}</pre><div class="rmeta"><span>sha256 ${esc(String(r.result_sha256 || "").slice(0, 16))}…</span><span class="${r.freshness === "live" ? "fresh" : ""}">${r.freshness === "live" ? "read live" : r.freshness === "recorded" ? "recorded replay" : esc(r.mode)}${r.rest_backed ? " · public registry API" : ""}</span><span>${esc(r.ran_at)}</span>${r.usl_version ? `<span>USL ${esc(r.usl_version)}</span>` : ""}<span>${esc((r.sources || []).length)} source(s)</span></div></details>`; };
   const longWhy = String(x.explanation || "").length > 480;
   const longPlan = String(plan.reason || "").length > 180;
   $("detail").innerHTML = `

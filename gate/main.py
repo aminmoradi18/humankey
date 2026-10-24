@@ -51,6 +51,28 @@ def approval_tier(p, last_paid):
     return "phone" if clean else "hardware"
 
 
+FATIGUE_WINDOW_S = 600   # phone approvals counted over the last 10 minutes
+FATIGUE_MAX = 3          # a 4th approval inside the window goes to the key
+FATIGUE_FAST_S = 3       # an approval faster than this is a reflex, not a decision
+
+
+def phone_fatigue(state=None, now=None):
+    """Why the next phone approval should go to the hardware key instead, or None.
+
+    Approval fatigue: people approve prompts they barely read, and an attacker can lean on that by
+    sending many small, clean-looking payments. So when the phone has approved several payments in a
+    few minutes, or the last one was approved within seconds, the next one needs the key.
+    """
+    now = time.time() if now is None else now
+    recent = [x for x in read("ledger", state or STATE) if (x.get("approval") or {}).get("kind") == scout.KINDS["phone"]
+              and now - scout.parse_iso(x["ts"]) < FATIGUE_WINDOW_S]
+    if len(recent) >= FATIGUE_MAX:
+        return f"{len(recent)} phone approvals in {FATIGUE_WINDOW_S // 60} minutes"
+    if recent and (recent[-1]["approval"].get("seconds_to_decide") or 99) < FATIGUE_FAST_S:
+        return f"last phone approval took {recent[-1]['approval']['seconds_to_decide']} s"
+    return None
+
+
 def load_last_paid():
     """vendor -> iban hash of the last payment, read through Zetaris. Empty on failure (all key)."""
     try:
@@ -141,6 +163,26 @@ class Gate:
             return "replayed decision (counter not increasing)"
         return None
 
+    def label(self, p, contract, msg, decision):
+        """Keep the person's decision as a labelled case: what the agents proposed and what the human
+        decided, with the device's signature over that decision. These signed answers are the gold labels
+        the next runs are scored on (eval/regression.py). A NO on a payment the agents called clear is
+        an override, in Scout's telemetry terms."""
+        dev = msg.get("id")
+        signed = bool(dev in self.devices and verify_ed25519(self.devices[dev], decision_message(
+            msg.get("req", ""), sha256(canonical(contract)), msg.get("th", ""), decision, msg.get("counter", 0),
+            msg.get("exp", -1), msg.get("cov", -1), msg.get("acct", "none"), msg.get("ah", "")), msg.get("sig", "")))
+        if not signed:
+            return
+        case = {"invoice_id": p["invoice_id"], "vendor_id": p["vendor_id"], "amount": p["amount"],
+                "agents": p.get("proposal"), "route": p.get("route"), "human": decision, "device": dev,
+                "signals": sorted(k for k, f in p["findings"].items() if f.get("signal") in ("risk_up", "unknown")),
+                "contract": contract["contractId"], "signature": msg.get("sig")}
+        append("human_labels", case, self.state)
+        if decision == "reject" and p.get("proposal") == "clear":
+            event("contract.override", p["invoice_id"], agent="human", contract=contract["contractId"],
+                  agents="clear", human="reject")
+
     def _save_counter(self, dev, counter):
         if dev and counter is not None:
             self.counters[dev] = max(int(counter), int(self.counters.get(dev, 0)))
@@ -175,6 +217,10 @@ class Gate:
             if self.last_paid is None:
                 self.last_paid = load_last_paid()
             tier = approval_tier(p, self.last_paid)
+            tired = phone_fatigue(self.state) if tier == "phone" else None
+            if tired:
+                event("fatigue_step_up", inv, agent="gate", reason=tired)
+                tier = "hardware"
         device = self.phone if tier == "phone" else self.device
         contract, why = self.morning(p, tier)
         if contract is None:
@@ -184,6 +230,7 @@ class Gate:
         event("sent_to_device", inv, agent="gate", contract=contract["contractId"], text=p["key_text"], tier=tier)
         w = p.get("witness")
         # The device gets the contract itself, hashes it, and reads amount, payee and count from it.
+        asked = time.time()
         msg = device.show(contract["contractId"], p["key_text"], canonical(contract))
         reason = self.verify(contract, p["key_text"], msg, sent=(w["exp"], w["cov"]) if w else (-1, -1))
         if msg.get("mismatch"):
@@ -209,10 +256,14 @@ class Gate:
                         "text_sha256": msg["th"], "decision": "approve", "counter": msg["counter"],
                         "count_witness": {"expected": msg.get("exp"), "checked": msg.get("cov")},
                         "account_on_key": msg.get("acct"), "signature": msg["sig"],
+                        "seconds_to_decide": round(time.time() - asked, 1),
                         "chain": [contract.get("parentId"), contract["contractId"], approved["contractId"]],
                         "contract": approved}
             self.execute(p, f"{'phone' if tier == 'phone' else 'human key'} ({msg['id']})", approval, pay)
+            self.label(p, contract, msg, "approve")
             return "EXECUTED"
+        if msg.get("d") == "reject" and not msg.get("mismatch"):
+            self.label(p, contract, msg, "reject")
         state = {"reject": "REJECTED", "timeout": "TIMEOUT"}.get(msg.get("d"), "REFUSED")
         event(state.lower(), inv, agent="gate", reason=reason)
         if state == "REFUSED":

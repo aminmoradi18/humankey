@@ -27,7 +27,8 @@ def read_contract(contract_json, text):
     c = json.loads(contract_json)
     pay, ev = c["intent"]["parameters"], c.get("evidence", {})
     seen = {"req": c.get("contractId"), "invoice": pay.get("invoice_id"), "amount": float(pay.get("amount") or 0),
-            "acct": pay.get("payee") or {}, "w": ev.get("witness") or {}}
+            "acct": pay.get("payee") or {}, "w": ev.get("witness") or {},
+            "in_master": (pay.get("payee") or {}).get("in_master", True)}
     first = text.split("\n", 1)[0]
     inv, _, money = first.partition(" $")
     try:
@@ -120,9 +121,14 @@ class EmulatorDevice:
         exp, cov = w.get("exp", -1), w.get("cov", -1)
         warn, status = [], "none"
         if exp >= 0 and cov >= 0 and cov < exp:
-            warn.append(f"{exp - cov} of {exp} NOT checked")
+            warn.append(f"{exp - cov} of {exp} not in list")
+            back = set(w.get("recovered") or [])
+            warn += [f"{m} {'re-checked' if m in back else 'NOT checked'}" for m in (w.get("miss") or [])[:2]]
         if exp >= 0 and led["last_expected"] and exp < led["last_expected"]:
             warn.append(f"count fell {led['last_expected']}->{exp}")
+        if not seen["in_master"]:
+            warn.append("vendor NOT in master")
+            warn.append("account not saved")
         if acct.get("v") and acct.get("h"):
             known = led["accounts"].get(acct["v"])
             status = "first" if not known else ("known" if known["h"] == acct["h"] else "new")
@@ -137,7 +143,7 @@ class EmulatorDevice:
         if d == "approve":
             if exp >= 0:
                 led["last_expected"] = exp
-            if status in ("first", "new"):
+            if status in ("first", "new") and seen["in_master"]:
                 led["accounts"][acct["v"]] = {"h": acct["h"], "l4": acct["l4"]}
             self._save_ledger(led)
         th = sha256(text)

@@ -188,7 +188,8 @@ class Critic:
             if r["status"] in ("ok", "empty") and r["sql"].upper().startswith("SELECT"):
                 _, r2 = self.z.query(r["sql"], purpose="critic re-run", agent=self.name)
                 rerun.append({"receipt_id": r["receipt_id"], "same_hash": r2["result_sha256"] == r["result_sha256"],
-                              "freshness": r2.get("freshness", "live")})
+                              "freshness": r2.get("freshness", "live"),
+                              "same_usl": r2.get("usl_version") == r.get("usl_version")})
         failed = [r["receipt_id"] for r in receipts if r["status"] in ("error", "not_run")]
         drift = [x["receipt_id"] for x in rerun if not x["same_hash"]]
         if drift:
@@ -197,6 +198,9 @@ class Critic:
         stale = [x["receipt_id"] for x in rerun if getattr(self.z, "mode", "") == "live" and x["freshness"] != "live"]
         if stale:
             reasons.append(f"re-run was not read live: {stale}")
+        moved = [x["receipt_id"] for x in rerun if not x.get("same_usl", True)]
+        if moved:
+            reasons.append(f"the semantic layer changed between the check and its re-run: {moved}")
         integrity = {"rerun": rerun, "failed_receipts": failed,
                      "verdict": "not_run" if not rerun else ("degraded" if failed or drift else "pass")}
         return ("revise" if reasons else "accept"), reasons, integrity

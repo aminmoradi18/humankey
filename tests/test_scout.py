@@ -95,3 +95,19 @@ class ScoutTest(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+class HumanLabelTest(unittest.TestCase):
+    def test_signed_decisions_become_labelled_cases(self):
+        tmp = Path(tempfile.mkdtemp())
+        os.environ["HUMANKEY_LOGS"] = str(tmp / "logs")
+        dev = EmulatorDevice(script=["reject", "approve"])
+        (tmp / "devices.json").write_text(canonical({"emulator": dev.public_key()}))
+        g = Gate(dev, allow_emulator=True, state=tmp)
+        clear = dict(PROPOSAL, invoice_id="INV9301", proposal="clear",
+                     key_text=PROPOSAL["key_text"].replace("INV9001", "INV9301"))
+        self.assertEqual(g.process(clear), "REJECTED")
+        self.assertEqual(g.process(dict(PROPOSAL)), "EXECUTED")
+        labels = read("human_labels", tmp)
+        self.assertEqual([(c["invoice_id"], c["human"]) for c in labels], [("INV9301", "reject"), ("INV9001", "approve")])
+        self.assertTrue(any(e["kind"] == "contract.override" for e in read("events", tmp / "logs")))

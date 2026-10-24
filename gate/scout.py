@@ -51,7 +51,10 @@ def evidence(p):
 
 def payee(p):
     hdr = p["findings"].get("invoice_header", {}).get("facts", {})
-    return {"vendor": p["vendor_id"], "iban_hash": hdr.get("iban_hash", ""), "iban_last4": hdr.get("iban_last4", "")}
+    # A vendor that is not in the vendor master (the count witness found it) must never teach the key
+    # a "known good" account, whatever the person decides.
+    return {"vendor": p["vendor_id"], "iban_hash": hdr.get("iban_hash", ""), "iban_last4": hdr.get("iban_last4", ""),
+            "in_master": not p.get("recovered")}
 
 
 def issue(p, secret, tier="hardware", parent=None, reason=None, approvals=(), stage="morning", now=None):
@@ -70,7 +73,8 @@ def issue(p, secret, tier="hardware", parent=None, reason=None, approvals=(), st
         "toolPlan": [{"tool": CAPABILITY, "args": {"invoice_id": p["invoice_id"]}}],
         "modelProfile": "none",
         "scope": {"user": "ap-manager", "surface": "humankey", "capabilities": [CAPABILITY]},
-        "evidence": dict(evidence(p), witness={"exp": w.get("exp", -1), "cov": w.get("cov", -1)},
+        "evidence": dict(evidence(p), witness={"exp": w.get("exp", -1), "cov": w.get("cov", -1),
+                                               "miss": w.get("miss", []), "recovered": w.get("recovered", [])},
                          ai=p.get("ai") or {}),
         "issuedAt": iso(now), "expiresAt": iso(now + TTL_S),
         "registryVersion": REGISTRY_VERSION, "policyPackVersion": POLICY_VERSION, "signedBy": "scout",

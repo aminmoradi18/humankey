@@ -129,7 +129,7 @@ function Main() {
             {err ? <Text style={s.err}>{err}</Text> : null}
             {tab === 'profile' ? <Profile me={me} devs={devs} refresh={refresh} />
               : tab === 'settings' ? <Settings me={me} refresh={refresh} onForget={() => setPaired(false)} />
-              : tab === 'phone' ? <PhoneTab items={items} mine={mine} onOpen={setOpen} refresh={refresh} />
+              : tab === 'phone' ? <PhoneTab items={items} mine={mine} onOpen={setOpen} refresh={refresh} fatigue={devs?.fatigue} />
               : <KeyTab items={items} pending={key} devs={devs} onOpen={setOpen} refresh={refresh} />}
           </View>
           {banner ? <Banner it={banner} top={insets.top} onOpen={() => { setOpen(banner.invoice_id); setBanner(null); }} onDone={() => setBanner(null)} /> : null}
@@ -284,7 +284,7 @@ function Empty({ icon, text }: { icon: Icon; text: string }) {
 }
 
 // ---------------------------------------------------------------- Phone tab
-function PhoneTab({ items, mine, onOpen, refresh }: { items: Item[]; mine: Item[]; onOpen: (id: string) => void; refresh: () => Promise<void> }) {
+function PhoneTab({ items, mine, onOpen, refresh, fatigue }: { items: Item[]; mine: Item[]; onOpen: (id: string) => void; refresh: () => Promise<void>; fatigue?: string | null }) {
   const done = items.filter((i) => i.tier === 'phone' && i.done);
   const total = mine.reduce((a, i) => a + i.amount, 0);
   return (
@@ -296,6 +296,15 @@ function PhoneTab({ items, mine, onOpen, refresh }: { items: Item[]; mine: Item[
         <Text style={s.heroAmount}>{money(total)}</Text>
         <Text style={s.heroSub}>{mine.length ? `${mine.length} payment${mine.length > 1 ? 's' : ''} you can approve here` : 'Nothing waiting right now'}</Text>
       </LinearGradient>
+      {fatigue ? (
+        <View style={[s.group, { marginTop: 14, padding: 14, flexDirection: 'row', gap: 12, borderWidth: 1, borderColor: tint(C.amber, 0.45), backgroundColor: tint(C.amber, 0.1) }]}>
+          <Ionicons name="hourglass" size={22} color={C.amber} />
+          <View style={{ flex: 1 }}>
+            <Text style={{ color: C.amber, fontSize: 15, fontWeight: '800' }}>Slow down: next ones go to the key</Text>
+            <Text style={{ color: C.dim, fontSize: 13, marginTop: 3, lineHeight: 18 }}>{fatigue}. Quick repeated approvals are how people approve things they did not read, so for a while this phone approves nothing.</Text>
+          </View>
+        </View>
+      ) : null}
       <Section title="TO APPROVE">
         {mine.length ? mine.map((it) => <Row key={it.invoice_id} it={it} onPress={() => onOpen(it.invoice_id)} />)
           : <Empty icon="sparkles-outline" text="Clean invoices under $4,000 pay themselves. Bigger or riskier ones go to the Key tab." />}

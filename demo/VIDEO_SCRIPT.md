@@ -35,12 +35,14 @@ Before recording:
 | 15b | 2:42 | Web timeline for INV0011: night contract, expired, morning re-plan, approved | none | The agents work at night. Their contract expires. In the morning a fresh one is chained to it, and that is what I sign. |
 | 15c | 2:52 | Terminal: `python3 -m gate.main tamper INV0005`, then the web: "evidence changed since the night contract" | type the command, press Send | Someone edits a waiting payment overnight. In the morning the chain stops. Nothing is paid. |
 | 15d | 2:58 | **The big moment.** Split screen. Left: the laptop, where malware rewrote the screen text of INV0011 to "$40" (`python3 -m gate.main lie INV0011`). Right: close-up of the key. The yellow band fills: `!! MISMATCH !!`, `laptop: $40`, `contract: $12,488`, `NOT SIGNING`. LED red. | press any button | Now the laptop itself lies. It shows me forty dollars. But the key doesn't read the laptop's words. It reads the amount from the contract it signs. Twelve thousand. It won't sign. What you see on the key is what gets paid. |
-| 16 | 3:12 | Key warning: count 16 of 17 | press I SEE | The key also counts. Seventeen invoices came in, sixteen were checked. It tells me. |
+| 16 | 3:12 | Key warning: `1 of 17 not in list` / `INV0004 re-checked`; then the web: INV0004 investigated, "vendor V0xx is not in the vendor master at all" | press I SEE | Seventeen invoices came in, sixteen made the work list. The key names the missing one. It is the suspicious one: its vendor does not exist. The agents were sent back to it, so nothing falls through. |
+| 16b (opt) | 3:20 | Phone: three quick approvals, then the amber card "Slow down: next ones go to the key" | tap approve fast | Three quick taps and the phone stops. Fast approvals are how people approve what they did not read. |
+| 16c (opt) | 3:26 | Terminal: `python3 -m eval.regression` lists the cases people signed and whether today's agents agree | none | Every yes and no I sign becomes a test case. The agents are graded on what people decided. |
 | 17 | 3:12 | Web: answer on the key, "blanket PO" stored in H-MEM; next run it is recalled | type the note | I explain a soft finding once. Meterless H-MEM remembers it, but never for a bank account. |
 | 18 (opt) | 3:22 | BENCHMARK.md table, A / B / C | none | We tested on generated companies with planted frauds. Frauds paid with no human: zero. |
 | 19 (opt) | 3:32 | Before / after table, held-out seeds | none | We publish our failures and the fix, measured on companies we did not tune on. |
 | 20 | 3:44 | Key, phone and laptop together | none | Zetaris keeps the receipts. Meterless keeps the memory. A human holds the key. |
-| 21 | 3:52 | End card, 6 s, green ticks, no voice: "Also built and tested: read-only Zetaris user (Zetaris refuses its writes) · receipt freshness · 5 Nemotron sizes compared, 0 frauds paid by any · phone notifications · night and morning Scout contracts · pairing lockout · replay and tamper refusal · fail-closed when the key is unplugged · 52 tests" | none | (none) |
+| 21 | 3:52 | End card, 6 s, green ticks, no voice: "Also built and tested: read-only Zetaris user (Zetaris refuses its writes) · receipt freshness and USL version on every receipt · cross-table data-quality rule · approval fatigue · signed human decisions as regression cases · 5 Nemotron sizes compared, 0 frauds paid by any · phone notifications · night and morning Scout contracts · pairing lockout · replay and tamper refusal · fail-closed when the key is unplugged · 52 tests" | none | (none) |
 
 ## Feature checklist (every item must appear once)
 
@@ -57,7 +59,9 @@ Before recording:
 - [ ] Night contract, morning re-plan, approval record (scene 15b)
 - [ ] Payment changed overnight is stopped (scene 15c)
 - [ ] Clear signing: the key reads the amount from the contract it signs and refuses a lying screen (scene 15d)
-- [ ] Count witness on the key (scene 16)
+- [ ] Count witness on the key, naming the missing invoice, which is sent back to the agents (scene 16)
+- [ ] Approval fatigue steps up to the key (scene 16b, or end card)
+- [ ] Signed human decisions become regression cases (scene 16c, or end card)
 - [ ] H-MEM memory of a human explanation (scene 17)
 - [ ] Benchmark with baselines, zero frauds paid (scene 18)
 - [ ] Before / after the critic fix, held-out seeds (scene 19)

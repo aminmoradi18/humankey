@@ -76,6 +76,10 @@ def bind(sql, params):
     return re.sub(r"(?<!:):([A-Za-z_]\w*)", sub, sql)
 
 
+USL_NAMESPACE = "lightning.metastore.humankey"
+USL_NAME = "northwind"
+
+
 class ZetarisClient:
     def __init__(self, mode=None, approver=None, log_root=None):
         load_env()
@@ -87,6 +91,7 @@ class ZetarisClient:
         self.timeout = int(os.environ.get("ZETARIS_TIMEOUT", "120"))
         self._token = None
         self._org = None
+        self._usl = None
 
     # --- transport -----------------------------------------------------
     def _post(self, url, body, headers=None):
@@ -162,6 +167,30 @@ class ZetarisClient:
         status = "ok" if rows or kind == "write" else "empty"
         return rows, self._receipt(text, headers, data, status, purpose, agent)
 
+    def usl_version(self):
+        """A short hash of the USL definition and its data-quality rules, read once per client.
+
+        Every receipt that reads the USL carries it, so a receipt says which version of the semantic
+        layer answered, and a re-run after the model or a rule changed shows up as a different version
+        instead of a silent difference in the result.
+        """
+        if self._usl is None:
+            parts = []
+            try:
+                for sql in (f"LOAD USL {USL_NAME} NAMESPACE {USL_NAMESPACE}", f"LIST DQ USL {USL_NAMESPACE}.{USL_NAME}"):
+                    snap = SNAPSHOTS / f"{sha(sql)}.json"
+                    if self.mode == "snapshot":
+                        parts.append(json.loads(snap.read_text())["data"] if snap.exists() else None)
+                    else:
+                        headers, data = self._run_live(sql, 500)
+                        SNAPSHOTS.mkdir(parents=True, exist_ok=True)
+                        snap.write_text(canonical({"sql": sql, "headers": headers, "data": data}))
+                        parts.append(data)
+                self._usl = "" if None in parts else sha(canonical(parts))[:16]
+            except ZetarisError:
+                self._usl = ""
+        return self._usl
+
     def setup(self, sql):
         """Setup DDL run by scripts/, outside agent traffic and the write guard."""
         return self._run_live(sql.strip().rstrip(";"), 50)  # keep newlines: COMPILE USL needs them
@@ -184,6 +213,7 @@ class ZetarisClient:
             # query, and HumanKey never caches them); "recorded" is a replay from a saved snapshot.
             "freshness": "live" if self.mode == "live" else "recorded",
             "rest_backed": bool(re.search(r"\bgleif\b|northwind\.vendors\b", text, re.I)),
+            **({"usl_version": self.usl_version()} if "metastore.humankey" in text.lower() else {}),
             "purpose": purpose,
             "agent": agent,
         }

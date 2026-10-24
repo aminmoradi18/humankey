@@ -22,7 +22,7 @@ from agent.world import World
 from common.jsonl import append, read
 from gate.devices import EmulatorDevice, PhoneDevice, open_device
 from agent.tools import APPROVAL_THRESHOLD, AUTO_LIMIT
-from gate.main import STATE, Gate, approval_tier, enroll_phone, load_last_paid
+from gate.main import STATE, Gate, approval_tier, enroll_phone, load_last_paid, phone_fatigue
 
 PORT = int(os.environ.get("WEB_PORT", "8700"))
 HOST = os.environ.get("WEB_HOST", "127.0.0.1")  # 0.0.0.0 to reach it from a real phone on the LAN
@@ -64,7 +64,10 @@ def tiers():
     if not last_paid:
         last_paid.update(load_last_paid())
     props = json.loads((STATE / "proposals.json").read_text()) if (STATE / "proposals.json").exists() else {}
-    return {inv: approval_tier(p, last_paid) for inv, p in props.items() if p["route"] == "AWAITING_KEY"}
+    t = {inv: approval_tier(p, last_paid) for inv, p in props.items() if p["route"] == "AWAITING_KEY"}
+    if phone_fatigue(STATE):  # many fast phone approvals: the next ones wait for the key
+        t = {inv: "hardware" for inv in t}
+    return t
 
 
 def phone_devices():
@@ -82,7 +85,7 @@ def phone_devices():
         kind = "phone" if dev.startswith("phone-") else "emulator" if dev == "emulator" else "key"
         out.append({"id": dev, "kind": kind, "counter": counters.get(dev, 0),
                     "active": (kind == "phone") or (kind == "emulator") == (DEVICE_KIND == "emulator")})
-    return {"device_kind": DEVICE_KIND, "devices": out, "paid": by,
+    return {"device_kind": DEVICE_KIND, "devices": out, "paid": by, "fatigue": phone_fatigue(STATE),
             "limits": {"auto": AUTO_LIMIT, "phone": APPROVAL_THRESHOLD}}
 
 

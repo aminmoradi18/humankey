@@ -42,6 +42,11 @@ USL_DQ = [
     ("invoice_amount_positive", "invoices", "amount > 0"),
     ("invoice_has_payee", "invoices", "iban_hash IS NOT NULL AND length(iban_hash) > 0"),
     ("bank_change_verified", "bank_change_requests", "verified_by IS NOT NULL AND length(verified_by) > 0"),
+    # Cross-table: the invoice amount must match its purchase order. Columns of the rule's own table are
+    # qualified (invoices.po_id): unqualified, po_id inside the subquery binds to purchase_orders and the
+    # rule passes everything.
+    ("invoice_matches_po", "invoices", f"invoices.po_id IS NULL OR EXISTS (SELECT 1 FROM {USL}.purchase_orders p "
+                                       "WHERE p.po_id = invoices.po_id AND abs(p.amount - invoices.amount) < 0.01)"),
 ]
 
 

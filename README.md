@@ -101,12 +101,27 @@ Both are modelled as one **Unified Semantic Layer** (`lightning.metastore.humank
 primary and foreign keys); its `vendors` table is the ERP vendor master joined with the live registry, and
 every agent check reads the USL. **Data-quality rules** run on every pass: the foreign key
 `invoices.vendor_id` catches an invoice whose vendor is missing (the agents' join would drop it silently),
-and rules flag vendors unknown to GLEIF and bank changes nobody verified. Details and our reflection on
+and rules flag vendors unknown to GLEIF, bank changes nobody verified, and (a cross-table rule) an invoice whose
+amount does not match its purchase order. The invoices the foreign key catches are not just counted: the run
+sends each one back to the agents, who investigate it from the invoice table and find its vendor missing from
+the master, and the key names it ("INV0004 re-checked") before the person signs. Every receipt also says
+whether it was read live or replayed, and carries a short hash of the USL definition and its rules
+(`usl_version`), so a check and its re-run are known to come from the same semantic layer. Details and our reflection on
 the USL: `docs/ZETARIS_USL.md`. All agent SQL goes through one
 function with a write guard: anything that is not a read needs a key approval, and `INVALIDATE CACHE` is never
 sent. `scripts/zetaris_agent_user.py` sets up a separate non-admin Zetaris user for the agents and shows Zetaris
 itself refusing its writes; USL reads with that user are refused by a grant issue we report in
 `docs/ZETARIS_USL.md` section 5, so the agents still use the builder login for now. Setup DDL: `scripts/register_zetaris_sources.sql`.
+
+**Learning from the person's decisions.** Every approval and every rejection signed on the key or the phone
+is kept as a labelled case with the device signature (`human_labels.jsonl` in the gate state). A rejection of
+a payment the agents called clear is logged as a Scout `contract.override`. `python3 -m eval.regression` scores
+the current run against all of them, so the agents are graded on what people actually decided, and the set
+grows with every decision.
+
+**Approval fatigue.** After three phone approvals in ten minutes, or one approved in under three seconds, the
+next payments go to the hardware key instead, and the phone app says why. Quick repeated taps are how people
+approve what they did not read, and how an attacker would try to slip through many small payments.
 
 **Meterless engines, in working features** (`meterless/server.ts`, 127.0.0.1:8711):
 - **World Model** (reference engine): shared state between the agents. Each receipt becomes an observation

@@ -98,7 +98,7 @@ def investigate(invoice_id, z, llm, world=None, run_id="run", max_revisions=1):
 
 DQ_RULES = [("vendor_id", "invoices"), ("vendor_in_gleif", "vendors"), ("vendor_lei_current", "vendors"),
             ("invoice_amount_positive", "invoices"), ("invoice_has_payee", "invoices"),
-            ("bank_change_verified", "bank_change_requests")]
+            ("bank_change_verified", "bank_change_requests"), ("invoice_matches_po", "invoices")]
 
 
 def coverage(z):
@@ -148,8 +148,23 @@ def main(ids):
     with ThreadPoolExecutor(max_workers=int(os.environ.get("RUN_WORKERS", "3"))) as pool:
         for result in pool.map(lambda g: run_group(g, run_id), groups.values()):
             for p in result:
-                p["witness"] = {k: witness[k] for k in ("exp", "cov", "miss", "dq")}
                 out[p["invoice_id"]] = p
+    # The count witness found invoices the work list lost (their vendor is not in the master, so the
+    # join dropped them without an error). Nothing may fall through: send each one back to the agents.
+    recovered = []
+    if witness["miss"]:
+        z2, llm2, world2 = ZetarisClient(), LLM(), World()
+        for i in witness["miss"]:
+            if i in out:
+                continue
+            event("recheck", i, agent="critic", reason="missing from the work list; sent back to the agents")
+            p = investigate(i, z2, llm2, world2, run_id)
+            p["recovered"] = True
+            out[i] = p
+            recovered.append(i)
+    witness["recovered"] = recovered
+    for p in out.values():
+        p["witness"] = {k: witness[k] for k in ("exp", "cov", "miss", "dq", "recovered")}
     for i in sorted(out):
         p = out[i]
         print(f"{i}: {p['proposal']:8} {p['route']:12} critic={p['critic']['verdict']}"
@@ -159,8 +174,8 @@ def main(ids):
     old = json.loads(path.read_text()) if path.exists() else {}
     old.update(out)
     path.write_text(canonical(old))
-    print(f"coverage: investigated {len(out)} of {witness['exp']} invoices in Zetaris ({run_id}); "
-          f"not reached: {witness['miss'] or 'none'}")
+    print(f"coverage: the work list reached {witness['cov']} of {witness['exp']} invoices in Zetaris ({run_id}); "
+          f"missed: {witness['miss'] or 'none'}; sent back and investigated: {recovered or 'none'}")
 
 
 if __name__ == "__main__":
