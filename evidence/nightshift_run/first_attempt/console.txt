@@ -1,0 +1,47 @@
+INV0001: escalate AWAITING_KEY critic=accept(rev 0) integrity=degraded
+   INV0001 $4,315 | amount unusual | split invoices | PAY anyway?
+INV0002: escalate AWAITING_KEY critic=accept(rev 1) integrity=pass
+   INV0002 $75,600 | amount unusual | risk medium | PAY anyway?
+INV0003: block    BLOCKED      critic=accept(rev 0) integrity=degraded
+   INV0003 $1,846 | NEW bank account | lookalike domain | BLOCK payment?
+INV0004: escalate AWAITING_KEY critic=accept(rev 0) integrity=pass
+   INV0004 $7,175 | not in registry | NEW bank account | PAY anyway?
+INV0005: clear    AWAITING_KEY critic=accept(rev 1) integrity=pass
+   INV0005 $13,134 | checks passed | risk low | PAY this?
+INV0006: escalate AWAITING_KEY critic=accept(rev 0) integrity=degraded
+   INV0006 $1,863 | amount unusual | split invoices | PAY anyway?
+INV0007: escalate AWAITING_KEY critic=accept(rev 0) integrity=pass
+   INV0007 $11,485 | AI offline: ask | risk medium | PAY anyway?
+INV0008: escalate AWAITING_KEY critic=accept(rev 0) integrity=degraded
+   INV0008 $1,896 | amount unusual | split invoices | PAY anyway?
+INV0009: escalate AWAITING_KEY critic=accept(rev 0) integrity=degraded
+   INV0009 $4,042 | amount unusual | no matching PO | PAY anyway?
+INV0010: clear    AWAITING_KEY critic=accept(rev 1) integrity=pass
+   INV0010 $20,781 | checks passed | risk low | PAY this?
+INV0011: escalate AWAITING_KEY critic=accept(rev 1) integrity=pass
+   INV0011 $12,488 | AI offline: ask | risk medium | PAY anyway?
+INV0012: escalate AWAITING_KEY critic=accept(rev 0) integrity=pass
+   INV0012 $8,097 | not in registry | amount unusual | PAY anyway?
+INV0013: escalate AWAITING_KEY critic=accept(rev 1) integrity=pass
+   INV0013 $9,601 | split invoices | AI offline: ask | PAY anyway?
+INV0014: escalate AWAITING_KEY critic=accept(rev 0) integrity=pass
+   INV0014 $11,773 | AI offline: ask | risk medium | PAY anyway?
+INV0015: escalate AWAITING_KEY critic=accept(rev 0) integrity=pass
+   INV0015 $9,806 | split invoices | AI offline: ask | PAY anyway?
+INV0016: block    BLOCKED      critic=revise(rev 1) integrity=degraded
+   INV0016 $1,892 | memo instructs AI | amount unusual | BLOCK payment?
+INV0017: escalate AWAITING_KEY critic=accept(rev 0) integrity=degraded
+   INV0017 $1,657 | amount unusual | split invoices | PAY anyway?
+coverage: the work list reached 16 of 17 invoices in Zetaris (run_20261025T224634Z); missed: ['INV0004']; sent back and investigated: ['INV0004']
+night contracts issued: 15 (valid 5 min; re-planned at approval)
+# Evaluation
+
+- Frauds stopped before payment: **9 / 9** (2 blocked outright, 0 caught only by the count witness, the rest held for the human key)
+- Clean invoices wrongly blocked: **0 / 8**; paid automatically: 0 (the others were over the approval threshold or escalated)
+- Proposal equals the label: 9 / 17
+- Critic send-backs: 6
+- Model calls: 44 ok, by model: `openrouter/nvidia/nemotron-3.5-lightning` x44
+
+
+Web view: http://127.0.0.1:8700   (Ctrl+C to stop)
+./run.sh: line 23: 871942 Killed                  python3 -m web.server

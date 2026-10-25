@@ -221,7 +221,11 @@ approve what they did not read, and how an attacker would try to slip through ma
 contract: Bearer token, `meterless-app` and `meterless-scope` headers, URL normalisation, `/v1/models`
 deciding online / unauthorized / offline, 180 s timeout, typed refusals not retried elsewhere. Set
 `LLM_PROVIDER=meterless` with the Console URL and token. Nightshift ships for Windows, Mac and DGX; we build
-on Linux x86, so, as the Meterless team advised, we developed against NVIDIA models directly.
+on Linux x86, so HumanKey ran on Linux and called a real Nightshift 1.2.3 on a Windows laptop over the LAN
+(hotspot mode). One full run went through it: 61 Nemotron calls, all answered, each with a Nightshift
+receipt, 9 / 9 frauds stopped, 0 / 8 clean invoices blocked, $0.0135 in total by the receipts. Logs and
+the failed attempt before it: `evidence/nightshift_run/`. The other benchmarks called NVIDIA models
+directly (Ollama, or a hosted gateway).
 
 **NVIDIA Nemotron does the thinking.** Every model call in HumanKey goes to an NVIDIA Nemotron model, run on
 the laptop's own NVIDIA GPU (Quadro P3000, 6 GB) through Ollama, so invoice data never leaves the machine.

@@ -111,7 +111,14 @@ class LLM:
             with urllib.request.urlopen(req, timeout=self.timeout) as r:
                 d = json.loads(r.read().decode())
         except urllib.error.HTTPError as e:
-            raise LLMError(f"HTTP {e.code}: {e.read().decode(errors='replace')[:200]}") from e
+            detail = e.read().decode(errors="replace")
+            # Nightshift reports a reasoning model that thought past the budget as a 502 "..._empty_response",
+            # and a busy upstream as a 503: the same cases as an empty answer and a dropped link.
+            if e.code == 502 and "empty_response" in detail:
+                raise LLMError("empty answer") from e
+            if e.code == 503:
+                raise LLMError(f"transport: HTTP 503 {detail[:150]}") from e
+            raise LLMError(f"HTTP {e.code}: {detail[:200]}") from e
         except (urllib.error.URLError, OSError) as e:
             raise LLMError(f"transport: {getattr(e, 'reason', e)}") from e
         if "error" in d:
