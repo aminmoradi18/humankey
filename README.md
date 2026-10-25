@@ -62,6 +62,14 @@ account or a skipped invoice even when the laptop's data says all is well.
 
 Payments are simulated: "execute" appends a line to `gate/state/ledger.jsonl`.
 
+## See it without installing anything
+
+https://aminmoradi18.github.io/humankey/ is the web view playing back a real sample run: every invoice,
+the evidence and Zetaris receipts behind each decision, the Critic, the agent trace, and the key. Press
+**Send to the key**, then Approve or Reject: the screens and results are what the real gate and the browser
+emulator produced for that answer when the page was built (`python3 scripts/build_site.py`). Nothing is
+signed or computed in the page.
+
 ## Run it
 
 Requirements: Python 3.10+, Node.js 20+, `pip install -r requirements.txt`.
@@ -268,6 +276,7 @@ records (CC0), read live through Zetaris.
 
 ```
 run.py      programmatic entry point (CLI and HTTP API); input_examples/, output_examples/
+site/       the no-install replay page (scripts/build_site.py, web/replay.js)
 agent/      planner, investigator, guard, critic, risk, reporter; tools.py holds the SQL checks
 zetaris/    Zetaris client: receipts, snapshots (sample mode), write guard
 llm/        model provider: meterless | openrouter | ollama | custom | replay
