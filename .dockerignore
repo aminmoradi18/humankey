@@ -1,0 +1,15 @@
+.git
+.env
+.env.*
+!.env.example
+logs
+**/node_modules
+**/__pycache__
+mobile
+firmware/*/.pio
+gate/state/*.json
+gate/state/*.jsonl
+gate/state/*.secret
+device_emu/key
+device_emu/counter
+device_emu/ledger.json

@@ -67,16 +67,17 @@ class World:
     def hints(self, vendor, exclude_invoice=None):
         """Short lines for the planner: what other agents already established about this vendor."""
         ctx = self.context(vendor)
-        out = []
+        found, decided = [], []
         for f in ctx["facts"]:
             v = f["value"] if isinstance(f["value"], dict) else {}
             if v.get("invoice_id") == exclude_invoice:
                 continue
             if f["predicate"] == "last_decision":
-                out.append(f"earlier invoice {v.get('invoice_id')} was {v.get('proposal')} ({v.get('route')})")
+                decided.append(f"earlier invoice {v.get('invoice_id')} was {v.get('proposal')} ({v.get('route')})")
             elif v.get("signal") == "risk_up":
-                out.append(f"{f['predicate']}: {v.get('summary')} (seen on {v.get('invoice_id')}, by {f['by']})")
-        return out
+                found.append(f"{f['predicate']}: {v.get('summary')} (seen on {v.get('invoice_id')}, by {f['by']})")
+        # The service returns facts in no fixed order; a fixed order keeps the planner's prompt the same.
+        return sorted(found) + sorted(decided)
 
     # -- H-MEM: what humans told us --------------------------------------
     def remember(self, vendor, check, content, by, invoice_id):

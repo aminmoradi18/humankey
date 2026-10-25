@@ -79,7 +79,44 @@ Critic, Risk agent, Reporter, the Meterless engines, the Scout contracts and the
 them, so the decisions, contracts and signatures are produced on every run, not stored. A model answer
 that is missing from the recording is not invented: the agent records the miss and the payment goes to a
 person. Offline mode keeps the recorded query results and asks the model again, so the agents reason anew.
-Three sample inputs and outputs from a real offline run: [`examples/`](examples/).
+The logs of one offline run, with real model calls, are in [`evidence/offline_run/`](evidence/offline_run/).
+
+### Programmatic entry point
+
+`run.py` takes invoice ids and returns JSON: each invoice's route, risk, what the key will show, the
+Critic's verdict, the models that answered, its events and the Zetaris receipts it cited. It only
+investigates and routes; releasing a payment still needs the key.
+
+```bash
+python3 run.py run input_examples/example_1.json        # one run, JSON on stdout
+python3 run.py                                          # API on port 8000
+curl -X POST http://localhost:8000/run -H "Content-Type: application/json" -d @input_examples/example_1.json
+```
+
+The request is `{"run_id": "...", "input": {"invoice_ids": ["INV0006"]}, "options": {"mode": "sample"}}`;
+the mode is `sample`, `offline` or `live`, and defaults to `sample` when `SAMPLE_MODE=true`, otherwise `live`.
+Errors come back as `{"status": "error", "error": {"type", "message", "recoverable"}}`. Every step is printed
+to stdout, and each run writes its own folder `logs/runs/<run_id>/` and a trace `logs/trace-<run_id>.jsonl`,
+built from the run's own logs (agent events, model calls with the model that answered, Zetaris queries).
+[`input_examples/`](input_examples/) has three requests and [`output_examples/`](output_examples/) what
+`run.py` returned for them in sample mode: INV0006 is paid automatically, INV0003 is blocked (new bank
+account, and a memo that tells the AI to approve), and INV0010 waits for the key, which catches it because
+the account was changed in the vendor master and does not match the account the key remembers.
+
+Sample and offline modes cover the invoices of the recorded company (`data/out/`); invoices of your own need
+live mode, since their queries were never recorded.
+
+### Docker
+
+```bash
+docker build -t humankey .
+docker run --rm -p 8000:8000 -e SAMPLE_MODE=true humankey     # no services, no keys
+docker run --rm -p 8000:8000 --env-file .env --add-host=host.docker.internal:host-gateway humankey
+```
+
+For live mode from the container, point `.env` at the host: `ZETARIS_REST_URL=http://host.docker.internal:8888/api/v1.0`
+and `METERLESS_BASE_URL=http://host.docker.internal:8088/v1` (`--add-host` is needed on Linux only).
+The web view and the hardware key run outside Docker (`./run.sh`).
 
 Open http://127.0.0.1:8700, pick an invoice, read why, and press **Send to the key**. Without the hardware a
 browser emulator answers. It is labelled EMULATOR everywhere and signs with its own key, so it can never pass
@@ -230,6 +267,7 @@ records (CC0), read live through Zetaris.
 ## Layout
 
 ```
+run.py      programmatic entry point (CLI and HTTP API); input_examples/, output_examples/
 agent/      planner, investigator, guard, critic, risk, reporter; tools.py holds the SQL checks
 zetaris/    Zetaris client: receipts, snapshots (sample mode), write guard
 llm/        model provider: meterless | openrouter | ollama | custom | replay

@@ -19,3 +19,7 @@ logs/sample/
 .pio/
 device_emu/ledger.json
 logs/bench/
+.env.*
+!.env.example
+*.pem
+*.key

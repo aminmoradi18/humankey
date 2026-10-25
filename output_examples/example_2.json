@@ -1,0 +1,384 @@
+{
+  "run_id": "example-2",
+  "status": "success",
+  "mode": "sample",
+  "output": {
+    "invoices": [
+      {
+        "invoice_id": "INV0003",
+        "route": "BLOCKED",
+        "risk": "high",
+        "proposal": "block",
+        "first_draft": "clear",
+        "key_text": "INV0003 $1,846\nmemo instructs AI\nNEW bank account\nBLOCK payment?",
+        "explanation": "The proposal is clear but the memo tries to instruct the AI. The checks that need to be run are sender_domain and purchase_order. The risk level for bank_account is high.",
+        "critic": {
+          "reasons": [],
+          "revisions": 1,
+          "verdict": "accept"
+        },
+        "integrity_verdict": "pass",
+        "injection_flags": [
+          {
+            "by": "nemotron",
+            "quote": "URGENT: updated bank details for payment Invoice for goods delivered under PO, net 30. Thank you, R. Patel."
+          }
+        ],
+        "models": {
+          "by_agent": {
+            "guard": [
+              "nemotron-mini"
+            ],
+            "investigator": [
+              "nemotron-mini"
+            ],
+            "planner": [
+              "nemotron-mini"
+            ]
+          },
+          "calls": 4,
+          "models": [
+            "nemotron-mini"
+          ],
+          "prompts_sha256": "df67272c8a7415b5eebb7b2ae578c6e756dd34b64a717f81d2dc670c177287a8"
+        },
+        "events": [
+          {
+            "invoice_id": "INV0003",
+            "kind": "start",
+            "ts": "2026-10-25T00:39:38Z"
+          },
+          {
+            "agent": "planner",
+            "checks": [
+              "invoice_header",
+              "vendor_registry",
+              "bank_account"
+            ],
+            "invoice_id": "INV0003",
+            "kind": "plan",
+            "memory_hints": [],
+            "reason": "This payment needs checks to verify the vendor's LEI, the payee account, and any bank-change request.",
+            "ts": "2026-10-25T00:39:38Z"
+          },
+          {
+            "agent": "guard",
+            "flags": [
+              {
+                "by": "nemotron",
+                "quote": "URGENT: updated bank details for payment Invoice for goods delivered under PO, net 30. Thank you, R. Patel."
+              }
+            ],
+            "invoice_id": "INV0003",
+            "kind": "injection",
+            "ts": "2026-10-25T00:39:38Z"
+          },
+          {
+            "agent": "investigator",
+            "claims": 2,
+            "invoice_id": "INV0003",
+            "kind": "draft",
+            "proposal": "clear",
+            "ts": "2026-10-25T00:39:38Z"
+          },
+          {
+            "agent": "critic",
+            "integrity": "pass",
+            "invoice_id": "INV0003",
+            "kind": "critic",
+            "reasons": [
+              "required checks not run: sender_domain, purchase_order",
+              "proposal is clear but these checks raise risk: bank_account",
+              "proposal is clear but the memo tries to instruct the AI"
+            ],
+            "ts": "2026-10-25T00:39:38Z",
+            "verdict": "revise"
+          },
+          {
+            "added_checks": [
+              "sender_domain",
+              "purchase_order"
+            ],
+            "agent": "investigator",
+            "invoice_id": "INV0003",
+            "kind": "revise",
+            "proposal": "block",
+            "ts": "2026-10-25T00:39:38Z"
+          },
+          {
+            "agent": "critic",
+            "integrity": "pass",
+            "invoice_id": "INV0003",
+            "kind": "critic",
+            "reasons": [],
+            "ts": "2026-10-25T00:39:38Z",
+            "verdict": "accept"
+          },
+          {
+            "agent": "investigator",
+            "changed": true,
+            "invoice_id": "INV0003",
+            "kind": "world",
+            "processed": 20,
+            "skippedUnchanged": 0,
+            "ts": "2026-10-25T00:39:38Z"
+          },
+          {
+            "agent": "risk",
+            "invoice_id": "INV0003",
+            "key_text": "INV0003 $1,846\nmemo instructs AI\nNEW bank account\nBLOCK payment?",
+            "kind": "decision",
+            "proposal": "block",
+            "risk": "high",
+            "route": "BLOCKED",
+            "ts": "2026-10-25T00:39:38Z"
+          }
+        ],
+        "receipts": [
+          {
+            "receipt_id": "rcpt_67b5315cf243",
+            "sql": "SELECT i.*, e.from_domain, e.subject FROM lightning.metastore.humankey.northwind.invoices i LEFT JOIN lightning.metastore.humankey.northwind.emails e ON e.email_id = i.email_id WHERE i.invoice_id = 'INV0003'",
+            "sources": [
+              "lightning.metastore.humankey.northwind.emails",
+              "lightning.metastore.humankey.northwind.invoices"
+            ],
+            "row_count": 1,
+            "mode": "snapshot",
+            "freshness": "recorded"
+          },
+          {
+            "receipt_id": "rcpt_a7218da9ea9e",
+            "sql": "SELECT v.vendor_id, v.name, v.lei AS registry_id, v.bank_since, v.country, v.lei AS lei_on_file, v.gleif_legal_name AS gleif_name, v.gleif_entity_status AS entity_status, v.gleif_registration_status AS registration_status, (SELECT count(*) FROM lightning.metastore.humankey.northwind.payments p WHERE p.vendor_id = v.vendor_id) AS paid_count FROM lightning.metastore.humankey.northwind.vendors v JOIN lightning.metastore.humankey.northwind.invoices i ON i.vendor_id = v.vendor_id WHERE i.invoice_id = 'INV0003'",
+            "sources": [
+              "lightning.metastore.humankey.northwind.invoices",
+              "lightning.metastore.humankey.northwind.payments",
+              "lightning.metastore.humankey.northwind.vendors"
+            ],
+            "row_count": 1,
+            "mode": "snapshot",
+            "freshness": "recorded"
+          },
+          {
+            "receipt_id": "rcpt_891c72590aa5",
+            "sql": "SELECT i.iban_hash AS inv_hash, i.iban_last4 AS inv_last4, v.iban_hash AS master_hash, v.iban_last4 AS master_last4, v.bank_since FROM lightning.metastore.humankey.northwind.invoices i JOIN lightning.metastore.humankey.northwind.vendors v ON v.vendor_id = i.vendor_id WHERE i.invoice_id = 'INV0003'",
+            "sources": [
+              "lightning.metastore.humankey.northwind.invoices",
+              "lightning.metastore.humankey.northwind.vendors"
+            ],
+            "row_count": 1,
+            "mode": "snapshot",
+            "freshness": "recorded"
+          },
+          {
+            "receipt_id": "rcpt_71f8069a3448",
+            "sql": "SELECT b.request_id, b.new_iban_hash, b.new_iban_last4, b.requested_at, b.channel, b.verified_by FROM lightning.metastore.humankey.northwind.bank_change_requests b JOIN lightning.metastore.humankey.northwind.invoices i ON i.vendor_id = b.vendor_id WHERE i.invoice_id = 'INV0003' ORDER BY b.requested_at",
+            "sources": [
+              "lightning.metastore.humankey.northwind.bank_change_requests",
+              "lightning.metastore.humankey.northwind.invoices"
+            ],
+            "row_count": 1,
+            "mode": "snapshot",
+            "freshness": "recorded"
+          },
+          {
+            "receipt_id": "rcpt_67b5315cf243",
+            "sql": "SELECT i.*, e.from_domain, e.subject FROM lightning.metastore.humankey.northwind.invoices i LEFT JOIN lightning.metastore.humankey.northwind.emails e ON e.email_id = i.email_id WHERE i.invoice_id = 'INV0003'",
+            "sources": [
+              "lightning.metastore.humankey.northwind.emails",
+              "lightning.metastore.humankey.northwind.invoices"
+            ],
+            "row_count": 1,
+            "mode": "snapshot",
+            "freshness": "recorded"
+          },
+          {
+            "receipt_id": "rcpt_a7218da9ea9e",
+            "sql": "SELECT v.vendor_id, v.name, v.lei AS registry_id, v.bank_since, v.country, v.lei AS lei_on_file, v.gleif_legal_name AS gleif_name, v.gleif_entity_status AS entity_status, v.gleif_registration_status AS registration_status, (SELECT count(*) FROM lightning.metastore.humankey.northwind.payments p WHERE p.vendor_id = v.vendor_id) AS paid_count FROM lightning.metastore.humankey.northwind.vendors v JOIN lightning.metastore.humankey.northwind.invoices i ON i.vendor_id = v.vendor_id WHERE i.invoice_id = 'INV0003'",
+            "sources": [
+              "lightning.metastore.humankey.northwind.invoices",
+              "lightning.metastore.humankey.northwind.payments",
+              "lightning.metastore.humankey.northwind.vendors"
+            ],
+            "row_count": 1,
+            "mode": "snapshot",
+            "freshness": "recorded"
+          },
+          {
+            "receipt_id": "rcpt_891c72590aa5",
+            "sql": "SELECT i.iban_hash AS inv_hash, i.iban_last4 AS inv_last4, v.iban_hash AS master_hash, v.iban_last4 AS master_last4, v.bank_since FROM lightning.metastore.humankey.northwind.invoices i JOIN lightning.metastore.humankey.northwind.vendors v ON v.vendor_id = i.vendor_id WHERE i.invoice_id = 'INV0003'",
+            "sources": [
+              "lightning.metastore.humankey.northwind.invoices",
+              "lightning.metastore.humankey.northwind.vendors"
+            ],
+            "row_count": 1,
+            "mode": "snapshot",
+            "freshness": "recorded"
+          },
+          {
+            "receipt_id": "rcpt_71f8069a3448",
+            "sql": "SELECT b.request_id, b.new_iban_hash, b.new_iban_last4, b.requested_at, b.channel, b.verified_by FROM lightning.metastore.humankey.northwind.bank_change_requests b JOIN lightning.metastore.humankey.northwind.invoices i ON i.vendor_id = b.vendor_id WHERE i.invoice_id = 'INV0003' ORDER BY b.requested_at",
+            "sources": [
+              "lightning.metastore.humankey.northwind.bank_change_requests",
+              "lightning.metastore.humankey.northwind.invoices"
+            ],
+            "row_count": 1,
+            "mode": "snapshot",
+            "freshness": "recorded"
+          },
+          {
+            "receipt_id": "rcpt_f7153c9c6417",
+            "sql": "SELECT e.from_domain, v.email_domain FROM lightning.metastore.humankey.northwind.invoices i JOIN lightning.metastore.humankey.northwind.vendors v ON v.vendor_id = i.vendor_id LEFT JOIN lightning.metastore.humankey.northwind.emails e ON e.email_id = i.email_id WHERE i.invoice_id = 'INV0003'",
+            "sources": [
+              "lightning.metastore.humankey.northwind.emails",
+              "lightning.metastore.humankey.northwind.invoices",
+              "lightning.metastore.humankey.northwind.vendors"
+            ],
+            "row_count": 1,
+            "mode": "snapshot",
+            "freshness": "recorded"
+          },
+          {
+            "receipt_id": "rcpt_472a63a8aa3d",
+            "sql": "SELECT i.po_id, i.amount AS inv_amount, p.amount AS po_amount, p.vendor_id AS po_vendor, i.vendor_id FROM lightning.metastore.humankey.northwind.invoices i LEFT JOIN lightning.metastore.humankey.northwind.purchase_orders p ON p.po_id = i.po_id WHERE i.invoice_id = 'INV0003'",
+            "sources": [
+              "lightning.metastore.humankey.northwind.invoices",
+              "lightning.metastore.humankey.northwind.purchase_orders"
+            ],
+            "row_count": 1,
+            "mode": "snapshot",
+            "freshness": "recorded"
+          },
+          {
+            "receipt_id": "rcpt_67b5315cf243",
+            "sql": "SELECT i.*, e.from_domain, e.subject FROM lightning.metastore.humankey.northwind.invoices i LEFT JOIN lightning.metastore.humankey.northwind.emails e ON e.email_id = i.email_id WHERE i.invoice_id = 'INV0003'",
+            "sources": [
+              "lightning.metastore.humankey.northwind.emails",
+              "lightning.metastore.humankey.northwind.invoices"
+            ],
+            "row_count": 1,
+            "mode": "snapshot",
+            "freshness": "recorded"
+          },
+          {
+            "receipt_id": "rcpt_a7218da9ea9e",
+            "sql": "SELECT v.vendor_id, v.name, v.lei AS registry_id, v.bank_since, v.country, v.lei AS lei_on_file, v.gleif_legal_name AS gleif_name, v.gleif_entity_status AS entity_status, v.gleif_registration_status AS registration_status, (SELECT count(*) FROM lightning.metastore.humankey.northwind.payments p WHERE p.vendor_id = v.vendor_id) AS paid_count FROM lightning.metastore.humankey.northwind.vendors v JOIN lightning.metastore.humankey.northwind.invoices i ON i.vendor_id = v.vendor_id WHERE i.invoice_id = 'INV0003'",
+            "sources": [
+              "lightning.metastore.humankey.northwind.invoices",
+              "lightning.metastore.humankey.northwind.payments",
+              "lightning.metastore.humankey.northwind.vendors"
+            ],
+            "row_count": 1,
+            "mode": "snapshot",
+            "freshness": "recorded"
+          },
+          {
+            "receipt_id": "rcpt_891c72590aa5",
+            "sql": "SELECT i.iban_hash AS inv_hash, i.iban_last4 AS inv_last4, v.iban_hash AS master_hash, v.iban_last4 AS master_last4, v.bank_since FROM lightning.metastore.humankey.northwind.invoices i JOIN lightning.metastore.humankey.northwind.vendors v ON v.vendor_id = i.vendor_id WHERE i.invoice_id = 'INV0003'",
+            "sources": [
+              "lightning.metastore.humankey.northwind.invoices",
+              "lightning.metastore.humankey.northwind.vendors"
+            ],
+            "row_count": 1,
+            "mode": "snapshot",
+            "freshness": "recorded"
+          },
+          {
+            "receipt_id": "rcpt_71f8069a3448",
+            "sql": "SELECT b.request_id, b.new_iban_hash, b.new_iban_last4, b.requested_at, b.channel, b.verified_by FROM lightning.metastore.humankey.northwind.bank_change_requests b JOIN lightning.metastore.humankey.northwind.invoices i ON i.vendor_id = b.vendor_id WHERE i.invoice_id = 'INV0003' ORDER BY b.requested_at",
+            "sources": [
+              "lightning.metastore.humankey.northwind.bank_change_requests",
+              "lightning.metastore.humankey.northwind.invoices"
+            ],
+            "row_count": 1,
+            "mode": "snapshot",
+            "freshness": "recorded"
+          },
+          {
+            "receipt_id": "rcpt_67b5315cf243",
+            "sql": "SELECT i.*, e.from_domain, e.subject FROM lightning.metastore.humankey.northwind.invoices i LEFT JOIN lightning.metastore.humankey.northwind.emails e ON e.email_id = i.email_id WHERE i.invoice_id = 'INV0003'",
+            "sources": [
+              "lightning.metastore.humankey.northwind.emails",
+              "lightning.metastore.humankey.northwind.invoices"
+            ],
+            "row_count": 1,
+            "mode": "snapshot",
+            "freshness": "recorded"
+          },
+          {
+            "receipt_id": "rcpt_a7218da9ea9e",
+            "sql": "SELECT v.vendor_id, v.name, v.lei AS registry_id, v.bank_since, v.country, v.lei AS lei_on_file, v.gleif_legal_name AS gleif_name, v.gleif_entity_status AS entity_status, v.gleif_registration_status AS registration_status, (SELECT count(*) FROM lightning.metastore.humankey.northwind.payments p WHERE p.vendor_id = v.vendor_id) AS paid_count FROM lightning.metastore.humankey.northwind.vendors v JOIN lightning.metastore.humankey.northwind.invoices i ON i.vendor_id = v.vendor_id WHERE i.invoice_id = 'INV0003'",
+            "sources": [
+              "lightning.metastore.humankey.northwind.invoices",
+              "lightning.metastore.humankey.northwind.payments",
+              "lightning.metastore.humankey.northwind.vendors"
+            ],
+            "row_count": 1,
+            "mode": "snapshot",
+            "freshness": "recorded"
+          },
+          {
+            "receipt_id": "rcpt_891c72590aa5",
+            "sql": "SELECT i.iban_hash AS inv_hash, i.iban_last4 AS inv_last4, v.iban_hash AS master_hash, v.iban_last4 AS master_last4, v.bank_since FROM lightning.metastore.humankey.northwind.invoices i JOIN lightning.metastore.humankey.northwind.vendors v ON v.vendor_id = i.vendor_id WHERE i.invoice_id = 'INV0003'",
+            "sources": [
+              "lightning.metastore.humankey.northwind.invoices",
+              "lightning.metastore.humankey.northwind.vendors"
+            ],
+            "row_count": 1,
+            "mode": "snapshot",
+            "freshness": "recorded"
+          },
+          {
+            "receipt_id": "rcpt_71f8069a3448",
+            "sql": "SELECT b.request_id, b.new_iban_hash, b.new_iban_last4, b.requested_at, b.channel, b.verified_by FROM lightning.metastore.humankey.northwind.bank_change_requests b JOIN lightning.metastore.humankey.northwind.invoices i ON i.vendor_id = b.vendor_id WHERE i.invoice_id = 'INV0003' ORDER BY b.requested_at",
+            "sources": [
+              "lightning.metastore.humankey.northwind.bank_change_requests",
+              "lightning.metastore.humankey.northwind.invoices"
+            ],
+            "row_count": 1,
+            "mode": "snapshot",
+            "freshness": "recorded"
+          },
+          {
+            "receipt_id": "rcpt_f7153c9c6417",
+            "sql": "SELECT e.from_domain, v.email_domain FROM lightning.metastore.humankey.northwind.invoices i JOIN lightning.metastore.humankey.northwind.vendors v ON v.vendor_id = i.vendor_id LEFT JOIN lightning.metastore.humankey.northwind.emails e ON e.email_id = i.email_id WHERE i.invoice_id = 'INV0003'",
+            "sources": [
+              "lightning.metastore.humankey.northwind.emails",
+              "lightning.metastore.humankey.northwind.invoices",
+              "lightning.metastore.humankey.northwind.vendors"
+            ],
+            "row_count": 1,
+            "mode": "snapshot",
+            "freshness": "recorded"
+          },
+          {
+            "receipt_id": "rcpt_472a63a8aa3d",
+            "sql": "SELECT i.po_id, i.amount AS inv_amount, p.amount AS po_amount, p.vendor_id AS po_vendor, i.vendor_id FROM lightning.metastore.humankey.northwind.invoices i LEFT JOIN lightning.metastore.humankey.northwind.purchase_orders p ON p.po_id = i.po_id WHERE i.invoice_id = 'INV0003'",
+            "sources": [
+              "lightning.metastore.humankey.northwind.invoices",
+              "lightning.metastore.humankey.northwind.purchase_orders"
+            ],
+            "row_count": 1,
+            "mode": "snapshot",
+            "freshness": "recorded"
+          }
+        ]
+      }
+    ]
+  },
+  "agents": [
+    "critic",
+    "gate",
+    "guard",
+    "investigator",
+    "planner",
+    "risk"
+  ],
+  "model_calls": {
+    "replay:nemotron-mini:ok": 68
+  },
+  "zetaris_queries": 402,
+  "trace_id": "example-2",
+  "log_file": "logs/trace-example-2.jsonl",
+  "run_folder": "logs/runs/example-2",
+  "execution_time_seconds": 15.5
+}

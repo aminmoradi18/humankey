@@ -1,0 +1,5 @@
+{
+  "run_id": "example-3",
+  "input": {"invoice_ids": ["INV0010"]},
+  "options": {"mode": "sample"}
+}
