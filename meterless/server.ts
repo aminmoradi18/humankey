@@ -10,7 +10,9 @@
 // Memory: Meterless H-MEM reference (hmem/src, Apache-2.0). What a human says when
 // answering on the key is stored as a long-term record tagged with the vendor and the
 // check it explains, with provenance; the risk agent recalls it next time, and the
-// human's later answers feed back (helpful / wrong) into its confidence.
+// human's later answers feed back (helpful / wrong) into its confidence. H-MEM's conflict
+// detection runs on every new answer: two answers for the same vendor and check that contradict
+// each other are both held back from recall until the person picks one, which supersedes the other.
 //
 // Run: npx tsx meterless/server.ts      (127.0.0.1:${WORLD_PORT:-8711})
 import http from "node:http";
@@ -87,13 +89,46 @@ function context(vendor: string) {
   };
 }
 
+// Open conflicts between human answers, keyed "a|b". H-MEM keeps its own list, but scan() re-adds
+// every pair it sees, so this is the deduplicated view; it is rebuilt by a scan at start.
+const open = new Map<string, { id: string; a: string; b: string; reason: string; confidence: number }>();
+const scope = (id: string) => (memory.store.get(id)?.tags ?? []).filter((t) => t.startsWith("vendor:") || t.startsWith("check:")).sort().join(" ");
+
+function scanConflicts() {
+  for (const c of memory.conflicts.scan()) {
+    const a = memory.store.get(c.memoryA), b = memory.store.get(c.memoryB);
+    if (!a || !b || a.supersededBy || b.supersededBy || scope(a.id) !== scope(b.id) || !scope(a.id)) continue;
+    const key = [a.id, b.id].sort().join("|");
+    if (!open.has(key)) open.set(key, { id: c.id, a: a.id, b: b.id, reason: c.reason, confidence: c.confidence });
+  }
+}
+const inConflict = (id: string) => [...open.values()].some((c) => c.a === id || c.b === id);
+const view = (id: string) => {
+  const m = memory.store.get(id)!;
+  return { id, content: m.content, refs: m.provenance?.refs ?? [], source: m.source };
+};
+const conflictsOf = (id?: string) =>
+  [...open.values()].filter((c) => !id || c.a === id || c.b === id)
+    .map((c) => ({ ...c, memories: [view(c.a), view(c.b)], scope: scope(c.a) }));
+
 function remember(b: { vendor: string; check: string; content: string; by: string; invoice_id: string }) {
   const rec = memory.add({
     content: b.content, type: "factual", layer: "long_term", confidence: 0.9,
     tags: [`vendor:${b.vendor}`, `check:${b.check}`], source: `human:${b.by}`,
     provenance: { origin: "user_correction", learnedAt: Date.now(), label: "answer given on the key", refs: [b.invoice_id] },
   });
-  return { id: rec.id, confidence: rec.confidence };
+  scanConflicts();
+  return { id: rec.id, confidence: rec.confidence, conflicts: conflictsOf(rec.id) };
+}
+
+// The person chose which answer holds: the other is superseded (kept, never deleted, out of recall).
+function resolve(b: { keep: string; drop: string; by: string }) {
+  const key = [b.keep, b.drop].sort().join("|");
+  if (!open.has(key)) throw new Error(`no open conflict between ${b.keep} and ${b.drop}`);
+  memory.store.update(b.drop, { supersededBy: b.keep });
+  open.delete(key);
+  for (const [k, c] of open) if (c.a === b.drop || c.b === b.drop) open.delete(k);
+  return { ok: true, kept: view(b.keep), superseded: b.drop, by: b.by };
 }
 
 function recall(vendor: string, check: string, q: string) {
@@ -102,6 +137,8 @@ function recall(vendor: string, check: string, q: string) {
   const res = memory.query(`${check} ${q}`, { topN: 50, threshold: 0 });
   const hits = res.memories
     .filter((m) => m.memory.tags.includes(`vendor:${vendor}`) && m.memory.tags.includes(`check:${check}`) && !m.memory.supersededBy)
+    // Contradicting answers settle nothing until the person resolves them.
+    .filter((m) => !inConflict(m.memory.id))
     .map((m) => ({ id: m.memory.id, content: m.memory.content, confidence: m.memory.confidence, relevance: m.relevance,
                    source: m.memory.source, refs: m.memory.provenance?.refs ?? [] }));
   return { hits, trace: res.trace };
@@ -111,12 +148,16 @@ const routes: Record<string, (q: URLSearchParams, b: any) => unknown> = {
   "POST /memory/add": (_q, b) => remember(b),
   "GET /memory/recall": (q) => recall(q.get("vendor") ?? "", q.get("check") ?? "", q.get("q") ?? ""),
   "POST /memory/feedback": (_q, b) => { memory.feedback(b.id, b.kind); return { ok: true }; },
+  "GET /memory/conflicts": () => conflictsOf(),
+  "POST /memory/resolve": (_q, b) => resolve(b),
   "GET /health": () => ({ ok: true, engine: "meterless-world-model-reference", events: world.events().length }),
   "POST /observe": (_q, b) => observe(b),
   "POST /decision": (_q, b) => decide(b),
   "GET /context": (q) => context(q.get("vendor") ?? ""),
   "GET /audit": () => world.audit().slice(-200),
 };
+
+scanConflicts();
 
 http.createServer(async (req, res) => {
   const url = new URL(req.url ?? "/", "http://x");

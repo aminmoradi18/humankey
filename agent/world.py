@@ -91,3 +91,10 @@ class World:
     def feedback(self, memory_id, kind):
         return self._req("POST", "/memory/feedback", {"id": memory_id, "kind": kind})
 
+    def conflicts(self):
+        """Human answers that contradict each other (H-MEM conflict detection); none of them is recalled."""
+        return self._req("GET", "/memory/conflicts")
+
+    def resolve(self, keep, drop, by):
+        return self._req("POST", "/memory/resolve", {"keep": keep, "drop": drop, "by": by})
+

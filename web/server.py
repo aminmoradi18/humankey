@@ -162,7 +162,17 @@ def remember(invoice_id, check, content):
     rec = World().remember(p["vendor_id"], check, content, "ap-manager", invoice_id)
     append("events", {"kind": "remembered", "invoice_id": invoice_id, "agent": "human", "check": check,
                       "memory": rec["id"], "content": content})
+    for c in rec.get("conflicts", []):
+        append("events", {"kind": "memory_conflict", "invoice_id": invoice_id, "agent": "h-mem", "check": check,
+                          "memories": [c["a"], c["b"]], "reason": c["reason"]})
     return rec
+
+
+def resolve(invoice_id, keep, drop):
+    out = World().resolve(keep, drop, "ap-manager")
+    append("events", {"kind": "memory_resolved", "invoice_id": invoice_id, "agent": "human", "kept": keep,
+                      "superseded": drop})
+    return out
 
 
 class Handler(BaseHTTPRequestHandler):
@@ -212,6 +222,11 @@ class Handler(BaseHTTPRequestHandler):
             if check not in SOFT_CHECKS or not content:
                 return self._send(400, {"error": "pick a check this answer explains and write the reason"})
             return self._send(200, remember(body.get("invoice_id", ""), check, content))
+        if self.path == "/api/resolve":
+            try:
+                return self._send(200, resolve(body.get("invoice_id", ""), body.get("keep", ""), body.get("drop", "")))
+            except Exception as e:  # the memory service says which conflict it does not know
+                return self._send(409, {"error": str(e)[:200]})
         if self.path == "/api/phone/pair":
             pid, pub = str(body.get("id", "")), str(body.get("pub", ""))
             if pairing["used"] or pairing["wrong"] >= PAIR_TRIES:

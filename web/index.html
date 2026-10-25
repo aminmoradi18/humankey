@@ -289,7 +289,7 @@ async function load() {
 
 function traceRow(e) {
   const k = String(e.kind || "");
-  const tone = {executed: "k-good", rejected: "k-bad", refused: "k-bad", timeout: "k-bad", blocked: "k-bad", forgery_attempt: "k-bad", sent_to_device: "k-warn", "contract.refused": "k-bad", "contract.expired": "k-warn"}[k] || "";
+  const tone = {memory_conflict: "k-warn", memory_resolved: "k-good", executed: "k-good", rejected: "k-bad", refused: "k-bad", timeout: "k-bad", blocked: "k-bad", forgery_attempt: "k-bad", sent_to_device: "k-warn", "contract.refused": "k-bad", "contract.expired": "k-warn"}[k] || "";
   const t = e.ts ? esc(String(e.ts).slice(11, 19)) : "";
   const extra = [e.verdict, e.reason, e.refused, e.released_by].filter(Boolean).map(esc).join(" · ");
   return `<li><time>${t}</time><div><span class="who">${esc(e.agent || "system")}</span> <b>${esc(e.invoice_id)}</b>
@@ -428,6 +428,20 @@ async function remember(id) {
   m.className = "flash " + (ok ? "okc" : "err");
   m.textContent = ok ? "Remembered. The next run will use it." : (j.error || "Could not save.");
   if (ok) $("mtext").value = "";
+  const c = ok && (j.conflicts || [])[0];
+  if (c) {  // H-MEM found an earlier answer that says the opposite: neither is used until the person picks
+    const [a, b] = c.memories, mine = a.id === j.id ? a : b, old = a.id === j.id ? b : a;
+    m.className = "flash err";
+    m.innerHTML = `This contradicts an earlier answer${old.refs.length ? " (on " + esc(old.refs.join(", ")) + ")" : ""}: “${esc(old.content)}”.
+      Neither will settle anything until you choose. <button class="more" data-resolve="${esc(id)}" data-keep="${esc(mine.id)}" data-drop="${esc(old.id)}">Keep the new one</button>
+      · <button class="more" data-resolve="${esc(id)}" data-keep="${esc(old.id)}" data-drop="${esc(mine.id)}">Keep the earlier one</button>`;
+  }
+}
+async function resolveMem(t) {
+  const [ok, j] = await post("/api/resolve", {invoice_id: t.dataset.resolve, keep: t.dataset.keep, drop: t.dataset.drop});
+  const m = $("memMsg"); if (!m) return;
+  m.className = "flash " + (ok ? "okc" : "err");
+  m.textContent = ok ? `Kept: “${j.kept.content}”. The other answer is superseded, not deleted.` : (j.error || "Could not resolve.");
 }
 async function answer(d) {
   $("kApprove").disabled = $("kReject").disabled = true;
@@ -435,7 +449,8 @@ async function answer(d) {
 }
 
 document.addEventListener("click", (e) => {
-  const t = e.target.closest("[data-pick],[data-release],[data-remember],[data-answer],[data-why]"); if (!t) return;
+  const t = e.target.closest("[data-pick],[data-release],[data-remember],[data-answer],[data-why],[data-resolve]"); if (!t) return;
+  if (t.dataset.resolve) { resolveMem(t); return; }
   if (t.dataset.why) { const k = t.dataset.why; whyOpen.has(k) ? whyOpen.delete(k) : whyOpen.add(k); lastDetail = ""; render(); return; }
   if (t.dataset.pick) { sel = t.dataset.pick; lastDetail = ""; lastList = ""; history.replaceState(null, "", "#" + sel); load();
     if (window.matchMedia("(max-width:820px)").matches) setTimeout(() => $("detail").scrollIntoView({behavior: "smooth"}), 350); }

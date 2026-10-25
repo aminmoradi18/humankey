@@ -54,6 +54,19 @@ class MemoryTest(unittest.TestCase):
         d = Risk.decide({"proposal": "clear"}, f, [], {"verdict": "pass"}, [])
         self.assertEqual(d["route"], "QUEUED_AUTO")
 
+    def test_contradicting_answers_settle_nothing_until_the_person_picks(self):
+        f = lambda: {"purchase_order": finding("purchase_order", "risk_up", "no purchase order referenced")}
+        first = self.w.remember("V010", "purchase_order", "V010 tooling always runs on a blanket PO", "ap-manager", "INV0007")
+        self.assertEqual(first["conflicts"], [])
+        self.assertEqual(len(apply_memory(self.w, "V010", f())), 1)
+        second = self.w.remember("V010", "purchase_order", "V010 tooling never runs on a blanket PO", "ap-manager", "INV0011")
+        self.assertEqual(len(second["conflicts"]), 1, "H-MEM flags the contradiction")
+        self.assertEqual(apply_memory(self.w, "V010", f()), [], "neither answer settles the finding")
+        self.w.resolve(second["id"], first["id"], "ap-manager")
+        used = apply_memory(self.w, "V010", f())
+        self.assertEqual([u["id"] for u in used], [second["id"]], "the kept answer is used, the other is superseded")
+        self.assertEqual(self.w.conflicts(), [])
+
     def test_memory_never_settles_hard_findings_or_other_vendors(self):
         self.w.remember("V005", "bank_account", "the new account is fine", "ap-manager", "INV0012")
         f = {"bank_account": finding("bank_account", "risk_up", "pays a NEW account")}
