@@ -79,6 +79,7 @@ Critic, Risk agent, Reporter, the Meterless engines, the Scout contracts and the
 them, so the decisions, contracts and signatures are produced on every run, not stored. A model answer
 that is missing from the recording is not invented: the agent records the miss and the payment goes to a
 person. Offline mode keeps the recorded query results and asks the model again, so the agents reason anew.
+Three sample inputs and outputs from a real offline run: [`examples/`](examples/).
 
 Open http://127.0.0.1:8700, pick an invoice, read why, and press **Send to the key**. Without the hardware a
 browser emulator answers. It is labelled EMULATOR everywhere and signs with its own key, so it can never pass

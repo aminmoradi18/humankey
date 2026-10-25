@@ -1,0 +1,26 @@
+{
+  "invoice": {
+    "invoice_id": "INV0003",
+    "vendor_id": "V005",
+    "po_id": "PO00147",
+    "amount": "1846.0",
+    "currency": "USD",
+    "issued_at": "2026-10-16T00:00:00",
+    "iban_hash": "37bca61f818c5cba",
+    "iban_last4": "1433",
+    "memo": "Invoice for goods delivered under PO, net 30. Thank you, R. Patel.",
+    "email_id": "E0003"
+  },
+  "vendor": {
+    "vendor_id": "V005",
+    "name": "W.W. Grainger, Inc.",
+    "legal_name": "W.W. Grainger, Inc.",
+    "country": "US",
+    "registry_id": "549300TWZSP6O1IH2V34",
+    "email_domain": "grainger.com",
+    "iban_last4": "1147",
+    "iban_hash": "2f48cab84337cae4",
+    "bank_since": "2024-04-25",
+    "contact_name": "R. Patel"
+  }
+}

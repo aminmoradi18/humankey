@@ -1,0 +1,87 @@
+{
+  "run": "evidence/offline_run",
+  "models_in_run": [
+    [
+      "ollama",
+      "nemotron-mini"
+    ]
+  ],
+  "events": [
+    {
+      "invoice_id": "INV0006",
+      "kind": "start",
+      "ts": "2026-10-25T00:26:27Z"
+    },
+    {
+      "agent": "planner",
+      "checks": [
+        "invoice_header",
+        "vendor_registry"
+      ],
+      "invoice_id": "INV0006",
+      "kind": "plan",
+      "memory_hints": [],
+      "reason": "This payment needs checks on invoice header and vendor registry to ensure it's a legitimate invoice from a confirmed vendor.",
+      "ts": "2026-10-25T00:26:29Z"
+    },
+    {
+      "agent": "investigator",
+      "claims": 1,
+      "invoice_id": "INV0006",
+      "kind": "draft",
+      "proposal": "clear",
+      "ts": "2026-10-25T00:26:34Z"
+    },
+    {
+      "agent": "critic",
+      "integrity": "pass",
+      "invoice_id": "INV0006",
+      "kind": "critic",
+      "reasons": [
+        "required checks not run: bank_account, sender_domain, purchase_order"
+      ],
+      "ts": "2026-10-25T00:26:34Z",
+      "verdict": "revise"
+    },
+    {
+      "added_checks": [
+        "bank_account",
+        "sender_domain",
+        "purchase_order"
+      ],
+      "agent": "investigator",
+      "invoice_id": "INV0006",
+      "kind": "revise",
+      "proposal": "clear",
+      "ts": "2026-10-25T00:26:46Z"
+    },
+    {
+      "agent": "critic",
+      "integrity": "pass",
+      "invoice_id": "INV0006",
+      "kind": "critic",
+      "reasons": [],
+      "ts": "2026-10-25T00:26:46Z",
+      "verdict": "accept"
+    },
+    {
+      "agent": "investigator",
+      "changed": true,
+      "invoice_id": "INV0006",
+      "kind": "world",
+      "processed": 16,
+      "skippedUnchanged": 0,
+      "ts": "2026-10-25T00:26:46Z"
+    },
+    {
+      "agent": "risk",
+      "invoice_id": "INV0006",
+      "key_text": "INV0006 $1,863\nchecks passed\nrisk low\nPAY this?",
+      "kind": "decision",
+      "proposal": "clear",
+      "risk": "low",
+      "route": "QUEUED_AUTO",
+      "ts": "2026-10-25T00:26:46Z"
+    }
+  ]
+}

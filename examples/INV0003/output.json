@@ -1,0 +1,90 @@
+{
+  "run": "evidence/offline_run",
+  "models_in_run": [
+    [
+      "ollama",
+      "nemotron-mini"
+    ]
+  ],
+  "events": [
+    {
+      "invoice_id": "INV0003",
+      "kind": "start",
+      "ts": "2026-10-25T00:25:52Z"
+    },
+    {
+      "agent": "planner",
+      "checks": [
+        "invoice_header",
+        "vendor_registry",
+        "bank_account"
+      ],
+      "invoice_id": "INV0003",
+      "kind": "plan",
+      "memory_hints": [],
+      "reason": "This payment needs checks to ensure the invoice is genuine, the vendor is confirmed, and the payee account matches the vendor master.",
+      "ts": "2026-10-25T00:25:55Z"
+    },
+    {
+      "agent": "investigator",
+      "claims": 2,
+      "invoice_id": "INV0003",
+      "kind": "draft",
+      "proposal": "clear",
+      "ts": "2026-10-25T00:26:03Z"
+    },
+    {
+      "agent": "critic",
+      "integrity": "pass",
+      "invoice_id": "INV0003",
+      "kind": "critic",
+      "reasons": [
+        "required checks not run: sender_domain, purchase_order",
+        "proposal is clear but these checks raise risk: bank_account"
+      ],
+      "ts": "2026-10-25T00:26:03Z",
+      "verdict": "revise"
+    },
+    {
+      "added_checks": [
+        "sender_domain",
+        "purchase_order"
+      ],
+      "agent": "investigator",
+      "invoice_id": "INV0003",
+      "kind": "revise",
+      "proposal": "clear",
+      "ts": "2026-10-25T00:26:11Z"
+    },
+    {
+      "agent": "critic",
+      "integrity": "pass",
+      "invoice_id": "INV0003",
+      "kind": "critic",
+      "reasons": [
+        "proposal is clear but these checks raise risk: bank_account, sender_domain"
+      ],
+      "ts": "2026-10-25T00:26:11Z",
+      "verdict": "revise"
+    },
+    {
+      "agent": "investigator",
+      "changed": true,
+      "invoice_id": "INV0003",
+      "kind": "world",
+      "processed": 20,
+      "skippedUnchanged": 0,
+      "ts": "2026-10-25T00:26:11Z"
+    },
+    {
+      "agent": "risk",
+      "invoice_id": "INV0003",
+      "key_text": "INV0003 $1,846\nNEW bank account\nlookalike domain\nBLOCK payment?",
+      "kind": "decision",
+      "proposal": "block",
+      "risk": "high",
+      "route": "BLOCKED",
+      "ts": "2026-10-25T00:26:11Z"
+    }
+  ]
+}
