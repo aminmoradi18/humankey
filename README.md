@@ -140,6 +140,10 @@ the server prints together with `http://<laptop LAN address>:8700`. Pairing is o
 
 Live mode (needs Docker, a local Zetaris install, and a model provider in `.env`):
 
+Zetaris and Nightshift are installed as in the Participant Setup Guide (HackOS Resource Center): Zetaris runs
+locally in Docker; Nightshift comes from meterless.ai, the NVIDIA key goes in its Providers tab (never in this
+project), and its Console gives the URL and runtime token for `METERLESS_BASE_URL` and `METERLESS_RUNTIME_TOKEN`.
+
 ```bash
 cp .env.example .env    # fill in Zetaris and model settings
 ./run.sh setup          # starts the ERP Postgres, registers both sources in Zetaris, checks row counts
