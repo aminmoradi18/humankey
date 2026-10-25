@@ -37,6 +37,14 @@
           "imageWidth": 200,
           "backgroundColor": "#0E1621"
         }
+      ],
+      [
+        "expo-build-properties",
+        {
+          "android": {
+            "usesCleartextTraffic": true
+          }
+        }
       ]
     ],
     "backgroundColor": "#0E1621",
