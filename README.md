@@ -204,8 +204,8 @@ approve what they did not read, and how an attacker would try to slip through ma
   from), the key shows it and signs, and only a verified signature lets the memory service store the rule, with
   the signed approval as its provenance. A rule is the engine's joined text of those answers, not a model-written
   summary, and like any memory it can only settle soft findings. Tested with the emulator
-  (`tests/test_memory.py`); the board firmware reads the same contract fields, but this path has not been run on
-  the board yet. Conformance suite: 13/13.
+  (`tests/test_memory.py`) and on the ESP32-S3 key (`DEVICE=serial python3 -m gate.main dream`: the board showed
+  the rule, signed it, and the gate verified the signature before the rule was stored), with no firmware change. Conformance suite: 13/13.
 - **Scout Intent execution contracts** (`gate/scout.py`), in the format of the Scout spec: HMAC-signed,
   5-minute TTL, immutable, re-planned with `parentId` and one `traceId`. Each payment is a chain: a *night*
   contract issued when the agents finish (bound to a digest of the evidence), a *morning* re-plan when a person
