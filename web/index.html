@@ -289,7 +289,7 @@ async function load() {
 
 function traceRow(e) {
   const k = String(e.kind || "");
-  const tone = {memory_conflict: "k-warn", memory_resolved: "k-good", executed: "k-good", rejected: "k-bad", refused: "k-bad", timeout: "k-bad", blocked: "k-bad", forgery_attempt: "k-bad", sent_to_device: "k-warn", "contract.refused": "k-bad", "contract.expired": "k-warn"}[k] || "";
+  const tone = {memory_conflict: "k-warn", memory_resolved: "k-good", "rule.proposed": "k-warn", "rule.approved": "k-good", "rule.rejected": "k-bad", executed: "k-good", rejected: "k-bad", refused: "k-bad", timeout: "k-bad", blocked: "k-bad", forgery_attempt: "k-bad", sent_to_device: "k-warn", "contract.refused": "k-bad", "contract.expired": "k-warn"}[k] || "";
   const t = e.ts ? esc(String(e.ts).slice(11, 19)) : "";
   const extra = [e.verdict, e.reason, e.refused, e.released_by].filter(Boolean).map(esc).join(" · ");
   return `<li><time>${t}</time><div><span class="who">${esc(e.agent || "system")}</span> <b>${esc(e.invoice_id)}</b>

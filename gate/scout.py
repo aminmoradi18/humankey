@@ -85,6 +85,36 @@ def issue(p, secret, tier="hardware", parent=None, reason=None, approvals=(), st
     return c
 
 
+RULE_INTENT = "memory.rule.approve"
+RULE_CAPABILITY = "memory.write"
+
+
+def issue_rule(rule_id, proposal, text, secret, now=None):
+    """A contract for storing an H-MEM dream rule. The key reads `RULE-n $0` from these bytes like any
+    payment line (no payee, no count witness, so none of its payment warnings apply) and signs the hash;
+    the rule itself is bound by the hash of its text and the ids of the answers it came from."""
+    now = time.time() if now is None else now
+    c = {
+        "contractId": new_id(), "parentId": None, "traceId": rule_id, "stage": "rule",
+        "intent": {"primary": {"id": RULE_INTENT}, "confidence": 1.0, "alternates": [],
+                   "parameters": {"invoice_id": rule_id, "amount": 0, "currency": "USD", "payee": {},
+                                  "rule": {"proposal": proposal["id"], "type": proposal["type"],
+                                           "vendor": proposal["vendor"], "check": proposal["check"],
+                                           "contentSha256": sha256(proposal["content"]),
+                                           "derivedFrom": proposal["derivedFrom"]}},
+                   "references": {"vendor": {"type": "vendor", "id": proposal["vendor"]}}},
+        "risk": {"level": "low", "redactions": [], "flags": [], "requireApproval": KINDS["hardware"], "approvals": []},
+        "toolPlan": [{"tool": RULE_CAPABILITY, "args": {"proposal": proposal["id"]}}],
+        "modelProfile": "none",
+        "scope": {"user": "ap-manager", "surface": "humankey", "capabilities": [RULE_CAPABILITY]},
+        "evidence": {"digest": sha256(canonical(proposal)), "displaySha256": sha256(text)},
+        "issuedAt": iso(now), "expiresAt": iso(now + TTL_S),
+        "registryVersion": REGISTRY_VERSION, "policyPackVersion": POLICY_VERSION, "signedBy": "scout",
+    }
+    c["signature"] = sign_contract(c, secret)
+    return c
+
+
 def expired(c, now=None):
     return (time.time() if now is None else now) > parse_iso(c["expiresAt"])
 

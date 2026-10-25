@@ -98,3 +98,14 @@ class World:
     def resolve(self, keep, drop, by):
         return self._req("POST", "/memory/resolve", {"keep": keep, "drop": drop, "by": by})
 
+    def dream(self):
+        """H-MEM dreaming: rules proposed from several human answers. None is stored until approved."""
+        return self._req("POST", "/memory/dream", {})
+
+    def dream_approve(self, proposal, approval):
+        return self._req("POST", "/memory/dream/approve", {"id": proposal["id"], "vendor": proposal["vendor"],
+                                                           "check": proposal["check"], "approval": approval})
+
+    def dream_reject(self, proposal_id):
+        return self._req("POST", "/memory/dream/reject", {"id": proposal_id})
+

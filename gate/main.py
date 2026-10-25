@@ -16,6 +16,8 @@ Usage:
   python3 -m gate.main forge-spec INV0008       write the spec's plain {kind: user-confirm} approval (must be refused)
   python3 -m gate.main tamper INV0011           attack demo: change a waiting payment after its night contract
   python3 -m gate.main lie INV0011              attack demo: the laptop shows the key a smaller amount than it pays
+  python3 -m gate.main dream [--allow-emulator] H-MEM dreams rules from people's answers; each is stored only
+                                                if the key signs it
 """
 import json
 import os
@@ -271,6 +273,34 @@ class Gate:
         return state if state != "REFUSED" else f"REFUSED ({reason})"
 
 
+def dream_rules(gate, world):
+    """H-MEM dreaming behind the key: every rule the engine proposes from people's answers is shown on
+    the device; only a verified device signature lets the memory service store it."""
+    out = []
+    for i, prop in enumerate(world.dream(), 1):
+        rule_id = f"RULE-{i}"
+        lines = [f"{rule_id} $0", "SAVE MEMORY RULE?", f"{prop['vendor']} {prop['check']}", f"from {len(prop['derivedFrom'])} answers"]
+        text = "\n".join(line[:21] for line in lines)
+        c = scout.issue_rule(rule_id, prop, text, gate.secret)
+        append("contracts", {"contract": c}, gate.state)
+        event("rule.proposed", rule_id, agent="h-mem", proposal=prop["id"], content=prop["content"],
+              derived_from=prop["derivedFrom"], contract=c["contractId"])
+        msg = gate.device.show(c["contractId"], text, canonical(c))
+        reason = gate.verify(c, text, msg, sent=(-1, -1))
+        gate._save_counter(msg.get("id"), msg.get("counter"))
+        if reason is None:
+            approval = {"device": msg["id"], "contract": c["contractId"], "signature": msg["sig"],
+                        "contract_sha256": sha256(canonical(c)), "counter": msg["counter"]}
+            rec = world.dream_approve(prop, approval)
+            event("rule.approved", rule_id, agent="human", memory=rec["id"], device=msg["id"])
+            out.append((rule_id, "STORED", rec["id"]))
+        else:
+            world.dream_reject(prop["id"])
+            event("rule.rejected", rule_id, agent="gate", reason=reason)
+            out.append((rule_id, "NOT STORED", reason))
+    return out
+
+
 def enroll_phone(phone_id, pub, state=STATE):
     if not phone_id.startswith("phone-"):
         raise ValueError("phone ids start with phone-")
@@ -330,6 +360,14 @@ def main(argv):
                 gate.issue_contract(p, stage="night")
                 n += 1
         print(f"night contracts issued: {n} (valid {scout.TTL_S // 60} min; re-planned at approval)")
+    elif cmd == "dream":
+        from agent.world import World
+        gate = Gate(open_device(), allow_emulator="--allow-emulator" in argv)
+        results = dream_rules(gate, World())
+        for rule_id, outcome, detail in results:
+            print(f"{rule_id}: {outcome} ({detail})")
+        if not results:
+            print("no rule to propose: H-MEM needs two or more related answers for the same vendor and check")
     elif cmd == "forge-spec":
         # Software writes the spec's own approval record into a contract. An executor that only checks
         # that an approval is present would pay; this one wants the device's signature.

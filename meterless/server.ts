@@ -13,6 +13,8 @@
 // human's later answers feed back (helpful / wrong) into its confidence. H-MEM's conflict
 // detection runs on every new answer: two answers for the same vendor and check that contradict
 // each other are both held back from recall until the person picks one, which supersedes the other.
+// H-MEM dreaming proposes a durable rule from several answers; the engine never stores a proposal by
+// itself, and here only the gate may approve one, after the key signs it (gate.main dream).
 //
 // Run: npx tsx meterless/server.ts      (127.0.0.1:${WORLD_PORT:-8711})
 import http from "node:http";
@@ -144,12 +146,51 @@ function recall(vendor: string, check: string, q: string) {
   return { hits, trace: res.trace };
 }
 
+// Dream proposals the gate may offer: built only from live human answers (none superseded or in an open
+// conflict) that all share one vendor and one check, so the approved rule has a scope recall can use.
+function dream() {
+  const offer = [];
+  const key = (ids: string[]) => [...ids].sort().join(",");
+  const stored = new Set(memory.store.all().filter((m) => m.derivedFrom?.length).map((m) => key(m.derivedFrom!)));
+  for (const p of memory.dreaming.dream()) {
+    if (p.type === "domain") continue;
+    const src = p.derivedFrom.map((id) => memory.store.get(id));
+    // only people's own answers, not rules already dreamed, and not a rule that is already stored
+    if (src.some((m) => !m || m.supersededBy || inConflict(m.id) || !m.source.startsWith("human:") ||
+                         m.tags.some((t) => t.startsWith("dream:")))) continue;
+    if (stored.has(key(p.derivedFrom))) continue;
+    const scopes = new Set(src.map((m) => scope(m!.id)));
+    if (scopes.size !== 1 || !scope(src[0]!.id).includes("vendor:")) continue;
+    const tags = scope(src[0]!.id).split(" ");
+    offer.push({ id: p.id, type: p.type, content: p.content, derivedFrom: p.derivedFrom,
+                 vendor: tags.find((t) => t.startsWith("vendor:"))!.slice(7), check: tags.find((t) => t.startsWith("check:"))!.slice(6),
+                 refs: [...new Set(src.flatMap((m) => m!.provenance?.refs ?? []))] });
+  }
+  return offer;
+}
+
+// Called by the gate after it verified the key's signature: the engine materializes the proposal (with
+// derivedFrom lineage); we give it the scope of its sources and the signed approval as provenance.
+function dreamApprove(b: { id: string; vendor: string; check: string; approval: { device: string; contract: string; signature: string } }) {
+  const rec = memory.dreaming.approve(b.id)!;
+  memory.store.update(rec.id, {
+    tags: [...rec.tags, `vendor:${b.vendor}`, `check:${b.check}`, `signed:${b.approval.device}`],
+    source: `human:${b.approval.device}`,
+    provenance: { ...rec.provenance, label: `dream rule approved on ${b.approval.device}`, refs: [b.approval.contract],
+                  approval: b.approval } as any,
+  });
+  return view(rec.id);
+}
+
 const routes: Record<string, (q: URLSearchParams, b: any) => unknown> = {
   "POST /memory/add": (_q, b) => remember(b),
   "GET /memory/recall": (q) => recall(q.get("vendor") ?? "", q.get("check") ?? "", q.get("q") ?? ""),
   "POST /memory/feedback": (_q, b) => { memory.feedback(b.id, b.kind); return { ok: true }; },
   "GET /memory/conflicts": () => conflictsOf(),
   "POST /memory/resolve": (_q, b) => resolve(b),
+  "POST /memory/dream": () => dream(),
+  "POST /memory/dream/approve": (_q, b) => dreamApprove(b),
+  "POST /memory/dream/reject": (_q, b) => { memory.dreaming.reject(b.id); return { ok: true }; },
   "GET /health": () => ({ ok: true, engine: "meterless-world-model-reference", events: world.events().length }),
   "POST /observe": (_q, b) => observe(b),
   "POST /decision": (_q, b) => decide(b),

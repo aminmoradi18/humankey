@@ -197,8 +197,15 @@ approve what they did not read, and how an attacker would try to slip through ma
   settle soft findings (no PO, unusual amount, split pattern), never a new bank account, a look-alike domain,
   a registry miss or a prompt injection. H-MEM's conflict detection runs on every new answer: if it
   contradicts an earlier one for the same vendor and check ("always" against "never"), neither settles anything until
-  the person picks one in the web view, and the other is superseded, not deleted. Conformance suite: 13/13; product
-  tests in `tests/test_memory.py`.
+  the person picks one in the web view, and the other is superseded, not deleted. H-MEM dreaming
+  (`python3 -m gate.main dream`) proposes a durable rule from two or more related answers for the same vendor and
+  check; the engine never stores a proposal by itself, and here the approval is the key's signature: the gate
+  issues a Scout contract for the rule (`RULE-1 $0`, bound to the hash of the rule's text and the answers it came
+  from), the key shows it and signs, and only a verified signature lets the memory service store the rule, with
+  the signed approval as its provenance. A rule is the engine's joined text of those answers, not a model-written
+  summary, and like any memory it can only settle soft findings. Tested with the emulator
+  (`tests/test_memory.py`); the board firmware reads the same contract fields, but this path has not been run on
+  the board yet. Conformance suite: 13/13.
 - **Scout Intent execution contracts** (`gate/scout.py`), in the format of the Scout spec: HMAC-signed,
   5-minute TTL, immutable, re-planned with `parentId` and one `traceId`. Each payment is a chain: a *night*
   contract issued when the agents finish (bound to a digest of the evidence), a *morning* re-plan when a person

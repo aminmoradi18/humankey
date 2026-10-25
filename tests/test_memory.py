@@ -67,6 +67,42 @@ class MemoryTest(unittest.TestCase):
         self.assertEqual([u["id"] for u in used], [second["id"]], "the kept answer is used, the other is superseded")
         self.assertEqual(self.w.conflicts(), [])
 
+    def test_dream_rule_is_stored_only_when_the_key_signs_it(self):
+        from gate.devices import EmulatorDevice
+        from gate.main import Gate, dream_rules
+        os.environ["HUMANKEY_EMU_DIR"] = os.path.join(TMP, "emu")
+        self.w.remember("V020", "amount_history", "V020 repairs spike every March for the plant shutdown",
+                        "ap-manager", "INV0101")
+        self.w.remember("V020", "amount_history", "V020 repairs are higher in March, shutdown maintenance",
+                        "ap-manager", "INV0102")
+        state = __import__("pathlib").Path(TMP) / "gate"
+        dev = EmulatorDevice(script=["reject"])
+        gate = Gate(dev, allow_emulator=True, state=state)
+        gate.devices["emulator"] = dev.public_key()
+        rejected = dream_rules(gate, self.w)
+        self.assertEqual([r[1] for r in rejected], ["NOT STORED"], "the person said no on the key")
+        dev.script = ["approve"]
+        stored = dream_rules(gate, self.w)
+        self.assertEqual([r[1] for r in stored], ["STORED"])
+        hits = self.w.recall("V020", "amount_history")
+        rule = [h for h in hits if h["id"] == stored[0][2]]
+        self.assertEqual(len(rule), 1, "the signed rule is in recall's scope")
+        self.assertTrue(rule[0]["source"].startswith("human:emulator"))
+        self.assertEqual(self.w.dream(), [], "the same answers are not offered again, and a rule is not a source")
+
+    def test_dream_rule_needs_a_trusted_device(self):
+        from gate.devices import EmulatorDevice
+        from gate.main import Gate, dream_rules
+        os.environ["HUMANKEY_EMU_DIR"] = os.path.join(TMP, "emu2")
+        self.w.remember("V021", "split_pattern", "V021 always bills tooling in two parts", "ap-manager", "INV0201")
+        self.w.remember("V021", "split_pattern", "V021 splits tooling invoices in two parts", "ap-manager", "INV0202")
+        dev = EmulatorDevice(script=["approve"] * 4)
+        gate = Gate(dev, allow_emulator=False, state=__import__("pathlib").Path(TMP) / "gate2")
+        gate.devices["emulator"] = dev.public_key()
+        out = dream_rules(gate, self.w)
+        self.assertTrue(out and all(r[1] == "NOT STORED" for r in out))
+        self.assertIn("emulator_not_trusted", out[0][2])
+
     def test_memory_never_settles_hard_findings_or_other_vendors(self):
         self.w.remember("V005", "bank_account", "the new account is fine", "ap-manager", "INV0012")
         f = {"bank_account": finding("bank_account", "risk_up", "pays a NEW account")}
