@@ -39,10 +39,11 @@ Before recording:
 | 16b (opt) | 3:20 | Phone: three quick approvals, then the amber card "Slow down: next ones go to the key" | tap approve fast | Three quick taps and the phone stops. Fast approvals are how people approve what they did not read. |
 | 16c (opt) | 3:26 | Terminal: `python3 -m eval.regression` lists the cases people signed and whether today's agents agree | none | Every yes and no I sign becomes a test case. The agents are graded on what people decided. |
 | 17 | 3:12 | Web: answer on the key, "blanket PO" stored in H-MEM; next run it is recalled | type the note | I explain a soft finding once. Meterless H-MEM remembers it, but never for a bank account. |
+| 17b | 3:18 | Key: `RULE-1 $0` / `SAVE MEMORY RULE?` / `V007 purchase_order` / `from 2 answers`; terminal: `DEVICE=serial python3 -m gate.main dream` → `RULE-1: STORED` | press YES | From my answers, Meterless H-MEM dreams a rule. It is stored only when I sign it on the key. |
 | 18 (opt) | 3:22 | BENCHMARK.md table, A / B / C | none | We tested on generated companies with planted frauds. Frauds paid with no human: zero. |
 | 19 (opt) | 3:32 | Before / after table, held-out seeds | none | We publish our failures and the fix, measured on companies we did not tune on. |
 | 20 | 3:44 | Key, phone and laptop together | none | Zetaris keeps the receipts. Meterless keeps the memory. A human holds the key. |
-| 21 | 3:52 | End card, 6 s, green ticks, no voice: "Also built and tested: agents read as their own non-admin Zetaris user (Zetaris itself refuses its writes) · receipt freshness and USL version on every receipt · cross-table data-quality rule · approval fatigue · signed human decisions as regression cases · 5 Nemotron sizes compared, 0 frauds paid by any · phone notifications · night and morning Scout contracts · pairing lockout · replay and tamper refusal · fail-closed when the key is unplugged · a vendor missing from the master never becomes a trusted account · 53 tests" | none | (none) |
+| 21 | 3:52 | End card, 6 s, green ticks, no voice: "Also built and tested: agents read as their own non-admin Zetaris user (Zetaris itself refuses its writes) · receipt freshness and USL version on every receipt · cross-table data-quality rule · approval fatigue · signed human decisions as regression cases · contradicting answers held back until you choose (H-MEM conflict detection) · 5 Nemotron sizes compared, 0 frauds paid by any · phone notifications · night and morning Scout contracts · pairing lockout · replay and tamper refusal · fail-closed when the key is unplugged · a vendor missing from the master never becomes a trusted account · 56 tests" | none | (none) |
 
 ## Feature checklist (every item must appear once)
 
@@ -68,6 +69,8 @@ Before recording:
 - [ ] NVIDIA Nemotron named, local GPU, model logged per call, a real live run on screen (scene 4)
 - [ ] Meterless World Model shared vendor context (scene 6)
 - [ ] Meterless H-MEM, and what it may never settle (scene 17)
+- [ ] H-MEM dreaming: a rule is stored only after the key signs it (scene 17b)
+- [ ] H-MEM conflict detection: contradicting answers settle nothing until the person picks (end card, or S14b)
 - [ ] Sponsor tech named again at the close (scene 20)
 - [ ] NVIDIA model shown on the key and signed into the approval (scene 10)
 - [ ] End card with everything not shown (scene 21)
@@ -93,6 +96,8 @@ Every scenario we have, with how to produce it. Run on `./run.sh sample` state u
 | S12 | Changed overnight | `python3 -m gate.main tamper INV0005`, then Send | REFUSED: evidence changed since the night contract |
 | S13 | Count witness | key before a decision | 16 of 17 checked, I SEE needed |
 | S14 | Memory of an answer | web, answer note on INV0009, next run | H-MEM recall settles the soft finding |
+| S14b | Contradicting answers | web, INV0009: "always needs a PO", then "never needs a PO" | the contradiction message with Keep the new one / Keep the earlier one |
+| S14c | Dream rule on the key | `DEVICE=serial python3 -m gate.main dream` | key shows RULE-1 $0, SAVE MEMORY RULE?; terminal RULE-1: STORED |
 | S15 | Wrong memory retired | `tests/test_memory.py` | wrong feedback retires the memory |
 | S16 | Memory never settles hard findings | `tests/test_memory.py` | bank account, domain, registry, injection stay |
 | S17 | Evidence drift | `tests/test_agents.py` result drift test | verdict degraded, not hidden |
