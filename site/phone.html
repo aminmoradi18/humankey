@@ -1,0 +1,45 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>HumanKey phone</title>
+<style>
+:root{--bg:#f4f5f7;--ink:#14171c;--muted:#5b6370;--panel:#fff;--line:#e2e5ea;--accent:#3d5afe}
+@media (prefers-color-scheme:dark){:root{--bg:#0c0e12;--ink:#eceef2;--muted:#8d95a3;--panel:#151920;--line:#242a33;--accent:#7b8cff}}
+*{box-sizing:border-box}
+body{margin:0;background:var(--bg);color:var(--ink);font:15px/1.55 system-ui,-apple-system,"Segoe UI",Roboto,sans-serif}
+.banner{background:#1d2433;color:#e8ecf4;font-size:13px;padding:9px 16px;text-align:center}
+.banner a{color:#9fb3ff;font-weight:600}
+main{display:flex;flex-wrap:wrap;gap:40px;justify-content:center;align-items:flex-start;padding:32px 16px 48px;max-width:1100px;margin:0 auto}
+.phone{width:390px;max-width:100%;height:800px;border-radius:44px;padding:12px;background:#0b0d10;box-shadow:0 30px 70px rgba(0,0,0,.35);flex:none}
+.phone iframe{width:100%;height:100%;border:0;border-radius:34px;background:#0e1621}
+.text{flex:1;min-width:260px;max-width:460px}
+h1{margin:0 0 6px;font-size:26px;letter-spacing:-.02em}
+ol{padding-left:20px}li{margin:6px 0}
+.muted{color:var(--muted);font-size:13.5px}
+code{background:var(--panel);border:1px solid var(--line);padding:1px 6px;border-radius:5px;font-size:13px}
+@media (max-width:520px){.phone{height:720px;border-radius:36px;padding:8px}.phone iframe{border-radius:30px}}
+</style>
+</head>
+<body>
+<div class="banner">Replay of a recorded run. <a href="./">Back to the web view</a> · <a href="https://github.com/aminmoradi18/humankey#run-it">Run it yourself</a></div>
+<main>
+  <div class="phone"><iframe src="phone/" title="HumanKey phone app"></iframe></div>
+  <div class="text">
+    <h1>The phone tier</h1>
+    <p>A paired phone may approve only clean mid-size payments: no risk flag, under $10,000, and paid to the
+      same account as the vendor's last payment. Everything else goes to the hardware key.</p>
+    <ol>
+      <li>Pair with any six digits (the real server prints a one-time code).</li>
+      <li>Open <b>INV0001</b>, the one payment in this run the phone may approve.</li>
+      <li>Approve or Reject. The app checks the contract and signs with its own Ed25519 key, here in the browser.</li>
+    </ol>
+    <p class="muted">This is the app's web build. Its queue and the gate's answer after you decide come from a
+      real sample run: the real gate verified a phone's signature on that contract and paid (or recorded the
+      rejection). Your browser's signature is not checked by anything here. The native app keeps its key in
+      the phone's secure storage and asks for a fingerprint; this web build uses browser storage.</p>
+  </div>
+</main>
+</body>
+</html>

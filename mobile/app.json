@@ -39,6 +39,9 @@
         }
       ]
     ],
-    "backgroundColor": "#0E1621"
+    "backgroundColor": "#0E1621",
+    "experiments": {
+      "baseUrl": "/humankey/phone"
+    }
   }
 }

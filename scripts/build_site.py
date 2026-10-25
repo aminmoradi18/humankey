@@ -19,19 +19,39 @@ ROOT = Path(__file__).resolve().parent.parent
 SITE = ROOT / "site"
 
 # Runs in a child process, because the gate reads its folders from the environment at import time.
+# mode "key": the emulator answers. "phone": a paired phone answers, signing in this process the way the app
+# does (gate/crypto.py decision_message). "queue": what the phone app's list and profile endpoints return.
 CHILD = r"""
 import json, sys
-from gate.devices import EmulatorDevice
-from gate.main import STATE, Gate, load_last_paid
-screens = []
+from gate.crypto import b64, decision_message, new_private_key, public_key_b64, sha256
+from gate.devices import EmulatorDevice, PhoneDevice
+from gate.main import STATE, Gate, enroll_phone, load_last_paid
+inv, answer, mode = sys.argv[1:4]
+if mode != "key":
+    phone_key = new_private_key()
+    enroll_phone("phone-replay", public_key_b64(phone_key))
+if mode == "queue":
+    import web.server as w
+    print(json.dumps({"queue": w.phone_queue(), "devices": w.phone_devices()}))
+    sys.exit()
+screens, pending = [], {}
 def ask(self, text):
     screens.append(text)
     return self.script.pop(0) if self.script else "timeout"
 EmulatorDevice._ask = ask
-p = json.loads((STATE / "proposals.json").read_text())[sys.argv[1]]
-dev = EmulatorDevice(script=[sys.argv[2]] * 4)
-result = Gate(dev, allow_emulator=True, last_paid=load_last_paid() or None).process(p)
-print(json.dumps({"screens": screens, "result": result}))
+class Phone(PhoneDevice):
+    def show(self, req, text, cj):
+        w = json.loads(cj).get("evidence", {}).get("witness") or {}
+        pending.update(req=req, text=text, cj=cj, c=sha256(cj), exp=w.get("exp", -1), cov=w.get("cov", -1))
+        th = sha256(text)
+        msg = decision_message(req, pending["c"], th, answer, 1, pending["exp"], pending["cov"])
+        return {"t": "decision", "req": req, "acct": "none", "ah": "", "warned": 0, "d": answer, "id": "phone-replay",
+                "counter": 1, "th": th, "sig": b64(phone_key.sign(msg)), "exp": pending["exp"], "cov": pending["cov"]}
+p = json.loads((STATE / "proposals.json").read_text())[inv]
+gate = Gate(EmulatorDevice(script=[answer] * 4), allow_emulator=True, phone=Phone() if mode == "phone" else None,
+            last_paid=load_last_paid() or None)
+result = gate.process(p)
+print(json.dumps({"screens": screens, "pending": pending or None, "result": result}))
 """
 
 
@@ -48,18 +68,20 @@ def sample_run():
     return ROOT / out["run_folder"]
 
 
-def outcome(folder, inv, answer):
+def outcome(folder, inv, answer, mode="key"):
     with tempfile.TemporaryDirectory() as tmp:
         work = Path(tmp) / "run"
         shutil.copytree(folder, work, ignore=shutil.ignore_patterns("world", "hmem", "llm_cache"))
         env = {**os.environ, "SAMPLE_MODE": "true", "DEVICE": "emulator", "HUMANKEY_LOGS": str(work),
                "HUMANKEY_STATE": str(work / "gate"), "HUMANKEY_EMU_DIR": str(work / "emulator")}
         n_events = len(jsonl(work / "events.jsonl"))
-        r = subprocess.run([sys.executable, "-c", CHILD, inv, answer], cwd=ROOT, env=env, capture_output=True,
+        r = subprocess.run([sys.executable, "-c", CHILD, inv, answer, mode], cwd=ROOT, env=env, capture_output=True,
                            text=True, timeout=120)
         if r.returncode:
             sys.exit(f"{inv} {answer}: {r.stderr[-400:]}")
         rec = json.loads(r.stdout.strip().splitlines()[-1])
+        if mode == "queue":
+            return rec
         rec["events"] = jsonl(work / "events.jsonl")[n_events:]
         rec["paid"] = next((x for x in jsonl(work / "gate" / "ledger.jsonl") if x["invoice_id"] == inv), None)
         return rec
@@ -84,6 +106,25 @@ def state(folder):
             "events": jsonl(folder / "events.jsonl")[-60:]}
 
 
+def phone_app():
+    """The phone app's web build (mobile/, Expo) under site/phone/, with its replay layer, and a page framing it."""
+    out = SITE / "phone"
+    shutil.rmtree(out, ignore_errors=True)
+    subprocess.run(["npx", "expo", "export", "--platform", "web", "--output-dir", str(out)], cwd=ROOT / "mobile",
+                   check=True, capture_output=True, timeout=600)
+    shutil.copy(ROOT / "web" / "phone-replay.js", out / "phone-replay.js")
+    # In the replay the gate's answer is the recorded one, so the app's success line says so.
+    said, honest = "Approved. The gate checked the signature and paid.", \
+        "Approved. In the recorded run the gate checked the phone signature and paid."
+    for js in (out / "_expo").rglob("*.js"):
+        text = js.read_text()
+        if said in text:
+            js.write_text(text.replace(said, honest))
+    index = (out / "index.html").read_text()
+    (out / "index.html").write_text(index.replace("<head>", '<head><script src="phone-replay.js"></script>', 1))
+    shutil.copy(ROOT / "web" / "phone.html", SITE / "phone.html")
+
+
 def main():
     folder = sample_run()
     st = state(folder)
@@ -93,8 +134,15 @@ def main():
         answers = ["approve", "reject"] if it["route"] == "AWAITING_KEY" else ["approve"]
         outcomes[inv] = {a: outcome(folder, inv, a) for a in answers}
         print(inv, {a: o["result"] for a, o in outcomes[inv].items()})
+    phone = outcome(folder, "", "", "queue")
+    phone["outcomes"] = {}
+    for it in phone["queue"]["items"]:
+        if it["tier"] == "phone":
+            inv = it["invoice_id"]
+            phone["outcomes"][inv] = {a: outcome(folder, inv, a, "phone") for a in ("approve", "reject")}
+            print(inv, "phone", {a: o["result"] for a, o in phone["outcomes"][inv].items()})
     SITE.mkdir(exist_ok=True)
-    data = {"state": st, "outcomes": outcomes, "run": folder.name}
+    data = {"state": st, "outcomes": outcomes, "phone": phone, "run": folder.name}
     (SITE / "replay.json").write_text(json.dumps(data, ensure_ascii=False))
     page = (ROOT / "web" / "index.html").read_text()
     layer = (ROOT / "web" / "replay.js").read_text()
@@ -107,7 +155,10 @@ def main():
     assert emu_note in page
     page = page.replace(emu_note, "Replay: these are the screens the browser emulator showed, and the gate's answers, when the run "
                         "was recorded. The real emulator signs with its own Ed25519 key; this page signs nothing.")
+    page = page.replace("Nothing is signed in this page. ", "Nothing is signed in this page. "
+                        '<a href="phone.html">Open the phone app</a> · ', 1)
     (SITE / "index.html").write_text(page)
+    phone_app()
     print(f"site/ written from {folder.relative_to(ROOT)}")
 
 
