@@ -16,6 +16,8 @@
 // Boards (pick the PlatformIO env):
 //   esp32s3   ESP32-S3 DevKit: SSD1306 128x64 on SDA 8 / SCL 9, BT1 (approve) on 4,
 //             BT2 (reject) on 5, buttons to GND; on-board RGB LED on 48 shows the state.
+//             Panel: green LED on 15 (by BT1), red on 16 (by BT2), blue on 17, each through 220 ohm
+//             to GND; active buzzer on 18 (to GND).
 //   nodemcuv2 NodeMCU (ESP8266): SSD1306 on SDA 12 / SCL 13, BT1 on 4, BT2 on 5.
 #include <Arduino.h>
 #include <ArduinoJson.h>
@@ -33,6 +35,10 @@
 #define OLED_SDA 8
 #define OLED_SCL 9
 #define RGB_PIN 48
+#define GREEN_PIN 15
+#define RED_PIN 16
+#define BLUE_PIN 17
+#define BUZZER_PIN 18
 #else
 #define OLED_SDA 12
 #define OLED_SCL 13
@@ -99,6 +105,30 @@ void led(uint8_t r, uint8_t g, uint8_t b) {
   neopixelWrite(RGB_PIN, r, g, b);
 #endif
 }
+
+// Panel next to the buttons: green by BT1, red by BT2, blue = waiting for you, and a buzzer.
+void panel(bool g, bool r, bool b) {
+#if defined(ESP32)
+  digitalWrite(GREEN_PIN, g);
+  digitalWrite(RED_PIN, r);
+  digitalWrite(BLUE_PIN, b);
+#endif
+}
+
+void beep(int ms, int times = 1) {
+  for (int i = 0; i < times; i++) {
+    if (i) delay(150);
+#if defined(ESP32)
+    digitalWrite(BUZZER_PIN, HIGH);
+    delay(ms);
+    digitalWrite(BUZZER_PIN, LOW);
+#endif
+  }
+}
+
+// How the panel blinks while the key waits for a button.
+enum Mood { CALM, CLEAN, RISK, ALARM };
+Mood mood = CALM;
 
 uint32_t hwRandom() {
 #if defined(ESP32)
@@ -168,6 +198,8 @@ void screen(const String &title, const String &body, const String &footer, bool 
 
 void idle() {
   led(0, 0, 8);
+  panel(false, false, false);
+  mood = CALM;
   if (!oledOk) return;
   oled.clearDisplay();
   oled.setTextColor(SSD1306_WHITE);
@@ -225,6 +257,11 @@ void result(const String &d) {
     oled.print(d == "timeout" ? "not signed" : "signed");
     oled.display();
   }
+  // panel: green and one beep (yes), red and two beeps (no), dark and one long beep (time out)
+  panel(d == "approve", d == "reject", false);
+  if (d == "approve") beep(250);
+  else if (d == "reject") beep(250, 2);
+  else beep(1000);
   for (int i = 0; i < 10; i++) {  // 5 s of blinking
     led(r, g, b);
     delay(300);
@@ -244,11 +281,22 @@ void pong() {
   Serial.println();
 }
 
+// Blue stays on while the key waits; green blinks for a clean payment, red for a risk, red fast for
+// an alarm. In the last 10 s a short tick every second.
 String waitButton() {
   unsigned long start = millis();
+  long lastTick = -1;
   while (millis() - start < TIMEOUT_MS) {
     if (digitalRead(APPROVE_PIN) == LOW) { delay(40); if (digitalRead(APPROVE_PIN) == LOW) return "approve"; }
     if (digitalRead(REJECT_PIN) == LOW) { delay(40); if (digitalRead(REJECT_PIN) == LOW) return "reject"; }
+    unsigned long t = millis() - start;
+    bool on = (t / (mood == ALARM ? 150 : 500)) % 2 == 0;
+    panel(mood == CLEAN && on, (mood == RISK || mood == ALARM) && on, true);
+    long left = (long)(TIMEOUT_MS - t) / 1000;
+    if (left < 10 && left != lastTick) {
+      lastTick = left;
+      beep(80);
+    }
     yield();
     delay(10);
   }
@@ -297,6 +345,8 @@ void show(JsonDocument &in) {
   String al4 = pay["payee"]["iban_last4"] | "";
   String shownSha = k["evidence"]["displaySha256"] | "";
   bool inMaster = pay["payee"]["in_master"] | true;
+  panel(false, false, true);
+  beep(500);  // a payment is waiting for you: look at the key before the model screen
   String first = text.substring(0, text.indexOf('\n') < 0 ? text.length() : text.indexOf('\n'));
   int dollar = first.indexOf(" $");
   String shownInv = dollar < 0 ? first : first.substring(0, dollar);
@@ -312,6 +362,9 @@ void show(JsonDocument &in) {
                                         "\ncontract: " + money(amount) + "\n" + inv + "\nNOT SIGNING"
                                       : "contract " + problem + "\ndoes not match\n\nNOT SIGNING";
     screen("!! MISMATCH !!", body, "ANY BUTTON = NO", true);
+    mood = ALARM;
+    delay(1000);  // apart from the first beep
+    beep(150, 3);
     waitButton();
     saved.counter += 1;
     save();
@@ -397,6 +450,9 @@ void show(JsonDocument &in) {
   if (nwarn) {
     led(60, 0, 0);
     screen("!! KEY WARNING !!", warn, "BT1=I SEE     BT2=NO", true);
+    mood = ALARM;
+    delay(1000);  // apart from the first beep
+    beep(150, 3);
     d = waitButton();  // approve here only means "I have seen the warning"
     delay(400);
   }
@@ -410,6 +466,7 @@ void show(JsonDocument &in) {
                  : text.endsWith("BLOCK payment?") ? "!! BLOCK ADVISED !!"
                  : text.indexOf("checks passed") >= 0 ? "! AGENT UNSURE !" : "! RISK - CHECK !";
     screen(title, text, "BT1=YES       BT2=NO", !clean);
+    mood = clean ? CLEAN : RISK;
     d = waitButton();
   }
   saved.counter += 1;  // every decision moves the counter, signed or not
@@ -558,10 +615,33 @@ void lines() {
   Wire.begin(OLED_SDA, OLED_SCL);
 }
 
+// Wiring check for the panel LEDs and the buzzer: {"t":"io","pin":15,"on":1}. Only these pins.
+void io(JsonDocument &in) {
+  JsonDocument out;
+  out["t"] = "io";
+#if defined(ESP32)
+  int pin = in["pin"] | -1;
+  bool ok = pin == GREEN_PIN || pin == RED_PIN || pin == BLUE_PIN || pin == BUZZER_PIN;
+  if (ok) digitalWrite(pin, (in["on"] | 0) ? HIGH : LOW);
+  out["pin"] = pin;
+  out["ok"] = ok;
+#else
+  out["ok"] = false;
+#endif
+  serializeJson(out, Serial);
+  Serial.println();
+}
+
 // ---------------------------------------------------------------- setup / loop
 void setup() {
   pinMode(APPROVE_PIN, INPUT_PULLUP);
   pinMode(REJECT_PIN, INPUT_PULLUP);
+#if defined(ESP32)
+  for (int p : {GREEN_PIN, RED_PIN, BLUE_PIN, BUZZER_PIN}) {
+    pinMode(p, OUTPUT);
+    digitalWrite(p, LOW);
+  }
+#endif
   Serial.begin(115200);
   Wire.begin(OLED_SDA, OLED_SCL);
   oledOk = oled.begin(SSD1306_SWITCHCAPVCC, 0x3C);
@@ -604,4 +684,5 @@ void loop() {
   else if (t == "acct_import") acctImport(in);
   else if (t == "acct_list") acctList();
   else if (t == "show") show(in);
+  else if (t == "io") io(in);
 }
