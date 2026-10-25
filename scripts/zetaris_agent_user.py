@@ -2,7 +2,9 @@
 
 Usage: python3 scripts/zetaris_agent_user.py
 Needs ZETARIS_AGENT_USER / ZETARIS_AGENT_PASSWORD in .env: a non-administrator user created once in the
-Zetaris UI (Management > Users, level General). The builder login (ZETARIS_USER) creates the role and
+Zetaris UI (Management > Users, level General). USL access also needs three interface steps that SQL grants
+do not replace: View on Unified Semantic Layer (Management > Permissions), the role under the USL namespace's
+Access Control, and the role with SELECT per table under the model's Access Control. The builder login (ZETARIS_USER) creates the role and
 the grants; then every check runs as the agent user, so the answers come from Zetaris, not from our
 own write guard.
 """
@@ -41,6 +43,7 @@ CHECKS = [
     ("register a new source", "CREATE LIGHTNING DATABASE evil DESCRIBE BY 'x'", False),
     ("read the USL (granted)", f"SELECT count(*) AS n FROM {USL}.invoices", True),
     ("run a DQ rule on the USL (granted)", f"RUN DQ vendor_id TABLE {USL}.invoices", True),
+    ("read the GLEIF view directly", "SELECT lei FROM gleif.lei_entities", False),
 ]
 for name, sql, expected in CHECKS:
     try:

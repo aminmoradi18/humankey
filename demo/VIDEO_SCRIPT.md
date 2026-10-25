@@ -42,7 +42,7 @@ Before recording:
 | 18 (opt) | 3:22 | BENCHMARK.md table, A / B / C | none | We tested on generated companies with planted frauds. Frauds paid with no human: zero. |
 | 19 (opt) | 3:32 | Before / after table, held-out seeds | none | We publish our failures and the fix, measured on companies we did not tune on. |
 | 20 | 3:44 | Key, phone and laptop together | none | Zetaris keeps the receipts. Meterless keeps the memory. A human holds the key. |
-| 21 | 3:52 | End card, 6 s, green ticks, no voice: "Also built and tested: read-only Zetaris user (Zetaris refuses its writes) · receipt freshness and USL version on every receipt · cross-table data-quality rule · approval fatigue · signed human decisions as regression cases · 5 Nemotron sizes compared, 0 frauds paid by any · phone notifications · night and morning Scout contracts · pairing lockout · replay and tamper refusal · fail-closed when the key is unplugged · 52 tests" | none | (none) |
+| 21 | 3:52 | End card, 6 s, green ticks, no voice: "Also built and tested: agents read as their own non-admin Zetaris user (Zetaris itself refuses its writes) · receipt freshness and USL version on every receipt · cross-table data-quality rule · approval fatigue · signed human decisions as regression cases · 5 Nemotron sizes compared, 0 frauds paid by any · phone notifications · night and morning Scout contracts · pairing lockout · replay and tamper refusal · fail-closed when the key is unplugged · a vendor missing from the master never becomes a trusted account · 53 tests" | none | (none) |
 
 ## Feature checklist (every item must appear once)
 
@@ -71,6 +71,7 @@ Before recording:
 - [ ] Sponsor tech named again at the close (scene 20)
 - [ ] NVIDIA model shown on the key and signed into the approval (scene 10)
 - [ ] End card with everything not shown (scene 21)
+- [ ] A vendor missing from the master never becomes a trusted account on the key (scene 16 warning, or end card)
 
 ## Screenshot list (slides, README, and spare shots for the edit)
 
@@ -101,6 +102,7 @@ Every scenario we have, with how to produce it. Run on `./run.sh sample` state u
 | S21 | Zetaris data-quality rules | Zetaris UI or `docs/ZETARIS_USL.md` | orphan invoice, unknown vendor, unverified bank change |
 | S22 | Model per request | `logs/llm.jsonl` | Nemotron named on every call |
 | S24 | Lying screen (clear signing) | `python3 -m gate.main lie INV0011` with the key plugged in | !! MISMATCH !! laptop $40, contract $12,488, NOT SIGNING |
+| S25 | Agents on a read-only Zetaris user | `python3 scripts/zetaris_agent_user.py` | six checks: reads allowed, INSERT and CREATE refused by Zetaris |
 | S23 | Benchmark | `eval/BENCHMARK.md` | A / B / C, lanes, before and after |
 
 ## Numbers on screen

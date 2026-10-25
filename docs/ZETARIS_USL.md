@@ -74,29 +74,29 @@ subqueries, and that the rule's own columns should be qualified, would save the 
 ## 5. A least-privilege identity for the agents
 
 Following the permissions guide ("give each agent and application its own user", "separate building from
-reading"), `scripts/zetaris_agent_user.py` sets up a non-administrator user `humankey-agent` in a role
-`humankey_readonly` and then runs every check *as that user*, so the answers come from Zetaris and not
-from our own write guard. Result on the local edition 2.4.3.1 (24 Oct):
+reading"), the agents read through a non-administrator user `humankey-agent` in a role `humankey_readonly`.
+The builder login is used only for setup and for writes a person approved on the key. Every receipt names the
+identity that ran the query. `scripts/zetaris_agent_user.py` creates the role and the SQL grants and then runs
+each check *as the agent user*, so the answers come from Zetaris, not from our own write guard. Result on the
+local edition 2.4.3.1 (25 Oct):
 
 | As the agent user | Expected | Zetaris |
 |---|---|---|
 | `SELECT` on the ERP datasource (granted) | allowed | allowed |
 | `INSERT` into the ERP | refused | refused: "does not have privileges to execute 'INSERT'" |
 | `CREATE LIGHTNING DATABASE` | refused | refused: "User is not permitted to run this command" |
-| `SELECT` on a USL table (granted) | allowed | **refused**: "does not have access to USL: `metastore`.`humankey`.invoices" |
-| `RUN DQ` on a USL table (granted) | allowed | **refused**, same message |
+| `SELECT` on a USL table (granted) | allowed | allowed |
+| `RUN DQ` on a USL table (granted) | allowed | allowed |
+| `SELECT` on the GLEIF view directly (not granted) | refused | refused; the agents reach GLEIF only through the USL |
 
-Denied by default, and the write refusals are exactly what we want: defence in depth behind our own guard.
-The USL grant is the gap. We granted `SELECT ON USL NAMESPACE lightning.metastore.humankey.northwind`, on
-`lightning.metastore.humankey`, and on the single table, to the role and to the user, and ticked View on
-Unified Semantic Layer under Management > Permissions. `SHOW GRANT` lists all of them, yet the access
-check still refuses. The refusal names `metastore`.`humankey`.invoices, without the `lightning` prefix and
-the `northwind` model, while the grants are stored as `LIGHTNING.METASTORE.HUMANKEY.NORTHWIND.*`, so the
-two identifiers may simply never match. Another team reported the same message in the help channel. Until
-it is fixed our agents read the USL with the builder login, and the write guard plus the key approval stay
-the controls that matter; switching to the agent user is a credentials change.
+What it took. The SQL grants alone (`GRANT SELECT ON USL NAMESPACE …`, on the namespace, the model and a
+single table, to the role and to the user) were accepted and listed by `SHOW GRANT`, yet every USL read was
+refused with "does not have access to USL". Access to a USL also needs three steps in the interface:
+View on Unified Semantic Layer under Management > Permissions, the role assigned under the USL namespace's
+Access Control, and the role assigned with SELECT per table under the model's Access Control. With those, the
+same reads pass. We first took the refusal for a bug, until another team's notes pointed to the interface steps.
 
-## Reflection
+## Reflection## Reflection
 
 **First impression.** I had not used a platform like this before. I had a feeling something like it
 should exist, because the gap was there in the market. Installing the local edition was easy and the
@@ -126,9 +126,10 @@ sits between them: which payment does not match its order? In my own projects I 
 data integration, and it is what the agents in this project do, with evidence.
 
 **What we would improve** (from building this, offered constructively):
-- The one I hit myself: I created a non-administrator user for the agents and granted it read access to
-  the USL. Zetaris accepted the grant and lists it, but the user still cannot read the USL (section 5).
-  Once that works, agents can run on a read-only identity, as your permissions guide recommends.
+- The one I hit myself: I created a non-administrator user for the agents and granted it read access to the
+  USL in SQL. Zetaris accepted the grants and lists them, but the user still could not read the USL until the
+  same access was also set in three interface screens (section 5). Either making the SQL grant enough, or a
+  refusal message that names the missing step, would save every team the hour we spent on it.
 - `SHOW DQ INVALID RECORD` is the most useful command for agents. A form that returns only the keys
   (or a count by key) would make it cheap to call on every run.
 - `COMPILE USL` needs each `CREATE TABLE` on its own line; a client that normalises whitespace gets

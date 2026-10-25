@@ -67,9 +67,18 @@ Payments are simulated: "execute" appends a line to `gate/state/ledger.jsonl`.
 Requirements: Python 3.10+, Node.js 20+, `pip install -r requirements.txt`.
 
 ```bash
-./run.sh sample     # no Zetaris, no model, no keys: replays a recorded run, then opens the web view
+./run.sh            # same as ./run.sh live: real Zetaris queries and real model calls (setup below)
+./run.sh offline    # no Zetaris: recorded query results, but every model call is made for real
+./run.sh sample     # no Zetaris, no model, no keys (SAMPLE_MODE=true), then opens the web view
 ./run.sh test       # unit and product tests + Meterless conformance suites
 ```
+
+What sample mode replays, and what it does not: it reads the Zetaris query results and the model answers
+recorded in one real live run (`data/snapshots/`, `data/llm_cache/`). The Planner, Investigator, Guard,
+Critic, Risk agent, Reporter, the Meterless engines, the Scout contracts and the gate all run for real on
+them, so the decisions, contracts and signatures are produced on every run, not stored. A model answer
+that is missing from the recording is not invented: the agent records the miss and the payment goes to a
+person. Offline mode keeps the recorded query results and asks the model again, so the agents reason anew.
 
 Open http://127.0.0.1:8700, pick an invoice, read why, and press **Send to the key**. Without the hardware a
 browser emulator answers. It is labelled EMULATOR everywhere and signs with its own key, so it can never pass
@@ -109,9 +118,10 @@ whether it was read live or replayed, and carries a short hash of the USL defini
 (`usl_version`), so a check and its re-run are known to come from the same semantic layer. Details and our reflection on
 the USL: `docs/ZETARIS_USL.md`. All agent SQL goes through one
 function with a write guard: anything that is not a read needs a key approval, and `INVALIDATE CACHE` is never
-sent. `scripts/zetaris_agent_user.py` sets up a separate non-admin Zetaris user for the agents and shows Zetaris
-itself refusing its writes; USL reads with that user are refused by a grant issue we report in
-`docs/ZETARIS_USL.md` section 5, so the agents still use the builder login for now. Setup DDL: `scripts/register_zetaris_sources.sql`.
+sent. The agents read as a separate non-admin Zetaris user (`ZETARIS_AGENT_USER`), and every receipt names
+the identity; the builder login is kept for setup and key-approved writes. `scripts/zetaris_agent_user.py`
+checks it live: reads of the USL pass, and Zetaris itself refuses the agent user's INSERT and CREATE
+(`docs/ZETARIS_USL.md` section 5, including the three interface steps a USL grant needs). Setup DDL: `scripts/register_zetaris_sources.sql`.
 
 **Learning from the person's decisions.** Every approval and every rejection signed on the key or the phone
 is kept as a labelled case with the device signature (`human_labels.jsonl` in the gate state). A rejection of
@@ -172,6 +182,35 @@ alone, each model paid 4 to 11 of the 18 frauds, and the biggest was not the saf
 model paid none, and the human's workload was almost the same. Safety comes from the design, not from model
 size, so the right choice is the smallest Nemotron that keeps the workload acceptable: here, the free and
 private 4B model on the laptop's own GPU.
+
+## AI and model usage
+
+Models (through the provider in `llm/provider.py`; every call is logged with the model that answered):
+- `nemotron-mini` (NVIDIA Nemotron, 4.2B, local through Ollama) for the Planner, Investigator and Guard.
+- Hosted Nemotron 3 Nano 30B, 3.5 Lightning, 3 Super 120B and 3 Ultra 550B, only in the model comparison
+  (`eval/MODELS.md`).
+- No embeddings and no fine-tuning; the Critic, Risk agent, Reporter and gate are deterministic code.
+
+Agent framework: none. The agents, their hand-offs and the critique loop are our own Python code.
+
+Sponsor technology: Zetaris, the Meterless engines, Nightshift and NVIDIA are described in
+[Sponsor technology](#sponsor-technology) above.
+
+Sample mode: `SAMPLE_MODE=true` (`./run.sh sample`) makes no call to Zetaris, Nightshift or any model; see
+[Run it](#run-it) for what it replays.
+
+Data: all company data is synthetic, made by `data/gen.py`; vendor names and LEIs are real public GLEIF
+records (CC0), read live through Zetaris.
+
+## Third-party code and licences
+
+- Meterless World Model and H-MEM reference engines: Apache-2.0 (`meterless/*/LICENSE`), used as published.
+- Scout execution-contract format: follows the published Scout spec; our implementation is `gate/scout.py`.
+- Python: `cryptography` (Apache-2.0 / BSD), `pyserial` (BSD-3-Clause).
+- Node: `tsx` (MIT). Phone app: Expo and React Native (MIT), `tweetnacl` (Unlicense).
+- Firmware: Arduino cores for ESP32 / ESP8266 (LGPL-2.1), Adafruit SSD1306 and GFX (BSD), rweather Crypto
+  (MIT), ArduinoJson (MIT).
+- GLEIF LEI data: CC0.
 
 ## Honest limits
 

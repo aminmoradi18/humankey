@@ -54,7 +54,7 @@ class LLM:
     def __init__(self, provider=None, log_root=None):
         self.calls = []  # (agent, model that answered, prompt hash) of every answer, in order
         load_env()
-        self.provider = provider or ("replay" if flag("SAMPLE_MODE") else os.environ.get("LLM_PROVIDER", "openrouter"))
+        self.provider = provider or ("replay" if flag("SAMPLE_MODE") else os.environ.get("LLM_PROVIDER", "meterless"))
         self.log_root = log_root
         if self.provider == "meterless":
             self.base = normalize_meterless_url(os.environ.get("METERLESS_BASE_URL", "http://127.0.0.1:8088/v1"))

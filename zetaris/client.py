@@ -89,9 +89,12 @@ class ZetarisClient:
         self.login_url = os.environ.get("ZETARIS_LOGIN_URL", "http://localhost:3000").rstrip("/")
         self.rest_url = os.environ.get("ZETARIS_REST_URL", "http://localhost:8888/api/v1.0").rstrip("/")
         self.timeout = int(os.environ.get("ZETARIS_TIMEOUT", "120"))
-        self._token = None
+        self._tokens = {}  # one login per identity
         self._org = None
         self._usl = None
+        # Least privilege: agent reads run as the non-admin agent user when one is configured
+        # (scripts/zetaris_agent_user.py); setup and key-approved writes use the builder login.
+        self.identity = (os.environ.get("ZETARIS_AGENT_USER") or os.environ.get("ZETARIS_USER", "")).lower()
 
     # --- transport -----------------------------------------------------
     def _post(self, url, body, headers=None):
@@ -109,25 +112,29 @@ class ZetarisClient:
         except (urllib.error.URLError, OSError) as e:
             raise ZetarisError(f"cannot reach Zetaris: {getattr(e, 'reason', e)}") from e
 
-    def _login(self):
-        code, body = self._post(self.login_url + "/api/auth/login", {
-            "username": os.environ.get("ZETARIS_USER", ""),
-            "password": os.environ.get("ZETARIS_PASSWORD", "")})
+    def _creds(self, builder):
+        if not builder and os.environ.get("ZETARIS_AGENT_USER"):
+            return os.environ["ZETARIS_AGENT_USER"], os.environ.get("ZETARIS_AGENT_PASSWORD", "")
+        return os.environ.get("ZETARIS_USER", ""), os.environ.get("ZETARIS_PASSWORD", "")
+
+    def _login(self, builder):
+        user, password = self._creds(builder)
+        code, body = self._post(self.login_url + "/api/auth/login", {"username": user, "password": password})
         if code != 200 or not body or "idToken" not in body:
             raise ZetarisError(f"login failed: HTTP {code}")
-        self._token, self._org = body["idToken"], str(body["orgId"])
+        self._tokens[builder], self._org = body["idToken"], str(body["orgId"])
 
-    def _run_live(self, sql, limit):
+    def _run_live(self, sql, limit, builder=False):
         for attempt in range(2):
-            if not self._token:
-                self._login()
+            if builder not in self._tokens:
+                self._login(builder)
             code, body = self._post(self.rest_url + "/sql-editor/sqls/run",
                                     {"queryId": str(uuid.uuid4()), "sql": sql,
                                      "source": "SqlEditor", "limit": limit},
-                                    {"Authorization": "Bearer " + self._token, "X-Org-ID": self._org,
+                                    {"Authorization": "Bearer " + self._tokens[builder], "X-Org-ID": self._org,
                                      "X-Request-ID": str(uuid.uuid4())})
             if code == 401 and attempt == 0:
-                self._token = None
+                self._tokens.pop(builder, None)
                 continue
             if code != 200:
                 raise ZetarisError((body or {}).get("msg", f"HTTP {code}"))
@@ -157,7 +164,7 @@ class ZetarisClient:
                 saved = json.loads(snap.read_text())
                 headers, data = saved["headers"], saved["data"]
             else:
-                headers, data = self._run_live(text, limit)
+                headers, data = self._run_live(text, limit, builder=(kind == "write"))
                 if kind == "read":
                     SNAPSHOTS.mkdir(parents=True, exist_ok=True)
                     snap.write_text(canonical({"sql": text, "headers": headers, "data": data}))
@@ -193,7 +200,7 @@ class ZetarisClient:
 
     def setup(self, sql):
         """Setup DDL run by scripts/, outside agent traffic and the write guard."""
-        return self._run_live(sql.strip().rstrip(";"), 50)  # keep newlines: COMPILE USL needs them
+        return self._run_live(sql.strip().rstrip(";"), 50, builder=True)  # keep newlines: COMPILE USL needs them
 
     def _receipt(self, text, headers, data, status, purpose, agent, error=None):
         ran_at = now_iso()
@@ -209,6 +216,7 @@ class ZetarisClient:
             "result_sha256": result_sha,
             "status": status,
             "mode": self.mode,
+            "identity": self.identity if self.mode == "live" else "recorded",
             # Freshness: "live" was read from the source just now (REST tables re-call their API on every
             # query, and HumanKey never caches them); "recorded" is a replay from a saved snapshot.
             "freshness": "live" if self.mode == "live" else "recorded",
