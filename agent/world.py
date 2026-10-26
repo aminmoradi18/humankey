@@ -26,7 +26,7 @@ class World:
         if autostart and not self._up():
             self._start()
 
-    def _req(self, method, path, body=None, timeout=30):
+    def _req(self, method, path, body=None, timeout=120):
         data = json.dumps(body).encode() if body is not None else None
         req = urllib.request.Request(BASE + path, data, {"Content-Type": "application/json"}, method=method)
         try:
