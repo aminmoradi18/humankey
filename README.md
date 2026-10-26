@@ -8,6 +8,7 @@ for a signed "yes" from a physical key on the desk (an ESP32 board with a small 
 mid-size clean payments for a signed "yes" from a paired phone.
 
 Open Agent Hackathon 2026, Track 02: *The Agent That Can Explain Why*.
+Slides: [`docs/HumanKey-slides.pdf`](docs/HumanKey-slides.pdf).
 
 ## The problem
 
