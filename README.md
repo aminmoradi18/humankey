@@ -225,8 +225,9 @@ deciding online / unauthorized / offline, 180 s timeout, typed refusals not retr
 on Linux x86, so HumanKey ran on Linux and called a real Nightshift 1.2.3 on a Windows laptop over the LAN
 (hotspot mode). One full run went through it: 61 Nemotron calls, all answered, each with a Nightshift
 receipt, 9 / 9 frauds stopped, 0 / 8 clean invoices blocked, $0.0135 in total by the receipts. Logs and
-the failed attempt before it: `evidence/nightshift_run/`. The other benchmarks called NVIDIA models
-directly (Ollama, or a hosted gateway).
+the failed attempt before it: `evidence/nightshift_run/`. Nightshift's own memory adds earlier answers to new
+prompts; every one of the 61 receipts has `"hmem": null`, so no invoice's answer leaked into another's. The
+other benchmarks called NVIDIA models directly (Ollama, or a hosted gateway).
 
 **NVIDIA Nemotron does the thinking.** Every model call in HumanKey goes to an NVIDIA Nemotron model. Two ways
 were used: `nemotron-3.5-lightning` through Meterless Nightshift (the demo run behind the video: 61 calls, all
@@ -234,12 +235,15 @@ answered, each with a Nightshift receipt, `evidence/nightshift_run/`), and `nemo
 NVIDIA GPU (Quadro P3000, 6 GB) through Ollama, so invoice data never leaves the machine, for the benchmark
 below.
 
-| Agent | What it asks the model | Model | Calls in the benchmark | Mean time |
-|---|---|---|---|---|
-| Planner | which checks this payment needs | `nemotron-mini` (4.2B, Q4_K_M) | 112 | 3.9 s |
-| Investigator | claims with receipt citations, and a proposal | `nemotron-mini` | 224 | 8.0 s |
-| Guard | does the invoice text try to instruct the AI | `nemotron-mini` | 112 | 1.4 s |
-| Critic, Risk, Reporter, gate | deterministic code, no model: the model may add caution, never remove it | none | | |
+| Agent | What it asks the model | Demo run through Nightshift (video) | Local benchmark (calls, mean time) |
+|---|---|---|---|
+| Planner | which checks this payment needs | `nemotron-3.5-lightning`, 17 calls | `nemotron-mini` (4.2B, Q4_K_M): 112, 3.9 s |
+| Investigator | claims with receipt citations, and a proposal | `nemotron-3.5-lightning`, 27 calls | `nemotron-mini`: 224, 8.0 s |
+| Guard | does the invoice text try to instruct the AI | `nemotron-3.5-lightning`, 17 calls | `nemotron-mini`: 112, 1.4 s |
+| Critic, Risk, Reporter, gate | deterministic code, no model: the model may add caution, never remove it | none | none |
+
+In the Nightshift run, Nightshift routed every call to Nemotron 3.5 Lightning through its OpenRouter provider;
+each receipt names that model (`provider_model`).
 
 Receipt log: every request is a line in `logs/llm.jsonl` with the agent, the provider, the model that
 answered, the time and the token counts (and, through Nightshift, the routed model and its receipt). The
@@ -257,8 +261,10 @@ private 4B model on the laptop's own GPU.
 ## AI and model usage
 
 Models (through the provider in `llm/provider.py`; every call is logged with the model that answered):
-- `nemotron-mini` (NVIDIA Nemotron, 4.2B, local through Ollama) for the Planner, Investigator and Guard.
-- Hosted Nemotron 3 Nano 30B, 3.5 Lightning, 3 Super 120B and 3 Ultra 550B, only in the model comparison
+- Meterless Nightshift is the default provider (`LLM_PROVIDER=meterless`). In the demo run behind the video it
+  served `nemotron-3.5-lightning` to the Planner, Investigator and Guard (`evidence/nightshift_run/`).
+- `nemotron-mini` (NVIDIA Nemotron, 4.2B, local through Ollama) for the same agents in the benchmark.
+- Hosted Nemotron 3 Nano 30B, 3.5 Lightning, 3 Super 120B and 3 Ultra 550B in the model comparison
   (`eval/MODELS.md`).
 - No embeddings and no fine-tuning; the Critic, Risk agent, Reporter and gate are deterministic code.
 
