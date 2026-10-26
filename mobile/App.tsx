@@ -33,6 +33,10 @@ type Tab = 'profile' | 'phone' | 'key' | 'settings';
 // One status per invoice, the same words the hardware key shows in its yellow band.
 type Status = { tone: string; title: string; text: string };
 function status(it: Item): Status {
+  // A finished invoice shows its outcome. Its tier is recomputed after payment (and fast approvals send the next
+  // ones to the key), so the waiting-state wording below would be wrong for it.
+  if (it.done && /^(phone|human key)/.test(it.done)) return { tone: C.green, title: 'Paid', text: `Released by ${it.done}. The gate checked the signature before paying.` };
+  if (it.done) return { tone: C.red, title: 'Not paid', text: `The gate recorded: ${it.done.replace(/_/g, ' ')}.` };
   const ups = it.findings.filter((f) => f.signal === 'risk_up' || f.signal === 'unknown');
   const bank = it.findings.find((f) => f.check === 'bank_account');
   if (it.last_paid_match === false && bank && /verified/.test(bank.summary))
@@ -625,7 +629,7 @@ function Detail({ item, onBack, refresh }: { item: Item; onBack: () => void; ref
             </View>
           ))}
         </Section>
-        <Section title={phone ? 'WHAT YOU SIGN' : item.tier === 'phone' ? 'WHAT YOU SIGNED' : 'WHAT THE KEY SHOWS'}>
+        <Section title={phone ? 'WHAT YOU SIGN' : item.done ? 'WHAT WAS SIGNED' : 'WHAT THE KEY SHOWS'}>
           <View style={{ padding: 16, backgroundColor: '#070B10', borderRadius: 14 }}>
             <Text style={{ color: '#7DD3FC', fontFamily: Platform.OS === 'ios' ? 'Menlo' : 'monospace', fontSize: 14, lineHeight: 21 }}>{item.key_text}</Text>
           </View>

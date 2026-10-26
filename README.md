@@ -227,8 +227,11 @@ receipt, 9 / 9 frauds stopped, 0 / 8 clean invoices blocked, $0.0135 in total by
 the failed attempt before it: `evidence/nightshift_run/`. The other benchmarks called NVIDIA models
 directly (Ollama, or a hosted gateway).
 
-**NVIDIA Nemotron does the thinking.** Every model call in HumanKey goes to an NVIDIA Nemotron model, run on
-the laptop's own NVIDIA GPU (Quadro P3000, 6 GB) through Ollama, so invoice data never leaves the machine.
+**NVIDIA Nemotron does the thinking.** Every model call in HumanKey goes to an NVIDIA Nemotron model. Two ways
+were used: `nemotron-3.5-lightning` through Meterless Nightshift (the demo run behind the video: 61 calls, all
+answered, each with a Nightshift receipt, `evidence/nightshift_run/`), and `nemotron-mini` on the laptop's own
+NVIDIA GPU (Quadro P3000, 6 GB) through Ollama, so invoice data never leaves the machine, for the benchmark
+below.
 
 | Agent | What it asks the model | Model | Calls in the benchmark | Mean time |
 |---|---|---|---|---|
