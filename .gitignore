@@ -8,6 +8,7 @@ gate/state/*.json
 logs/*.jsonl
 logs/*.jsonl
 node_modules/
+!site/phone/assets/node_modules/
 data/.world/
 device_emu/counter
 logs/*.log
